@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "types": ["node"],
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": true,
+  }
+}
