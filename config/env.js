@@ -11,6 +11,14 @@ export const env = {
 
     JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET,
     JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL,
+
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    EMAIL_USER: process.env.EMAIL_USER,
 }
 
 Object.entries(env).forEach(([key, value]) => {

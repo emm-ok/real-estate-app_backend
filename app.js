@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import morgan from "morgan";
 // import { connectToDB } from "./config/db.js";
 import authRoutes from "./modules/auth/auth.route.js";
+import userRoutes from "./modules/user/user.route.js";
 import { prisma } from "./lib/prisma.js";
 
 console.log("PORT:", env.PORT);
@@ -26,13 +27,9 @@ app.get("/", async(req, res) => {
     const user = await prisma.user.findMany();
     return res.json(user)
 })
-app.delete("/", async(req, res) => {
-    const user = await prisma.user.delete({
-        where: { email: "davenick@gmail.com"}
-    });
-    return res.json(user)
-})
-app.use(`${API_URL}/auth`, authRoutes)
+
+app.use(`${API_URL}/auth`, authRoutes);
+app.use(`${API_URL}/user`, userRoutes);
 
 
 // connectToDB();

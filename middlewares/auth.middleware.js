@@ -6,12 +6,14 @@ export const validateAuth = async (req, res, next) => {
   try {
     let token;
 
-    if(req.headers.authorization && req.headers.authorization.startsWith("Bearer")){
+    if (req.cookies?.jwt) {
+      token = req.cookies?.jwt;
+    } else if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
       token = req.headers.authorization.split(" ")[1];
-    } else if(req.cookies?.jwt){
-      token = req.cookies?.jwt
     }
-
     if (!token) {
       return res.status(401).json({
         success: false,
@@ -20,12 +22,14 @@ export const validateAuth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
+    // console.log("Decoded", decoded);
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
     });
+    // console.log("user from midddlewware", user);
 
-    if (!user || !user.isActive) {
+    if (!user || user.status !== "ACTIVE") {
       return res.status(401).json({
         success: false,
         message: "User not found",

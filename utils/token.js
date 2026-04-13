@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken"
 import { env } from "../config/env.js"
-import cookies from "cookie-parser"
 
 export const generateToken = (userId, res) => {
     const payload = { id: userId};

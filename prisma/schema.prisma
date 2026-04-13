@@ -128,6 +128,9 @@ model User {
   name     String
   email    String  @unique
   password String?
+
+  googleId String? @unique
+
   phone    String?
   bio      String?
   image    String?
