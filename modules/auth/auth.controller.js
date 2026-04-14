@@ -318,3 +318,47 @@ export const resetPassword = async (req, res) => {
     });
   }
 };
+
+export const googleAuth = async (req, res, next) => {
+  try {
+    const redirect = req.query.redirect || "/";
+
+    res.cookie("redirect_after_login", redirect, {
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "strict",
+      maxAge: 60 * 60 * 1000, // 60 mins or 1 hour
+    });
+
+    return next();
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Google Authentication Failed",
+    });
+  }
+};
+
+export const googleCallback = async (req, res) => {
+  try {
+    console.log("Landed at google callback")
+    if (!req.user) {
+      return res.redirect("/sign-in");
+    }
+    const redirectPath = req.cookies.redirect_after_login || "/";
+    const redirectUrl = `${env.CLIENT_URL}${redirectPath}`;
+
+    generateToken(req.user.id, res);
+
+    res.clearCookie("redirect_after_login");
+
+    return res.redirect(redirectUrl);
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Google Callback Failed",
+    });
+  }
+};

@@ -6,6 +6,7 @@ export const userSelect = {
   id: true,
   name: true,
   email: true,
+  image: true,
   status: true,
   companyMembership: true,
   bookmarks: true,
