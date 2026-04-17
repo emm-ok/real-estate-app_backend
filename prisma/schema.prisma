@@ -51,6 +51,10 @@ enum ApplicationAction {
   APPROVED 
   REJECTED 
   UPDATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_DELETED
+  DELETE_APPLICATION
+  DOCUMENT_VERIFIED
 }
 
 enum ApplicationStatus {
@@ -154,7 +158,7 @@ model User {
   sentMessages     Message[] @relation("MessageSender")
   receivedMessages Message[] @relation("MessageReceiver")
 
-  status        Status?  @default(ACTIVE)
+  status        Status  @default(ACTIVE)
   emailVerified Boolean @default(false)
   emailVerificationToken String?
   emailVerificationExpiresAt DateTime?
@@ -182,6 +186,9 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  @@index([email])
+  @@index([status])
+  @@index([role])
   @@index([createdAt])
   @@index([deletedAt])
 }
@@ -426,7 +433,7 @@ model AgentApplication {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([userId])
+  @@index([userId, status])
 }
 
 model AgentProfessional {
@@ -451,8 +458,13 @@ model AgentDocument {
 
   type AgentDocumentType // ID_CARD, LICENSE, SELFIE
   url  String
+  publicId String
 
-  @@index([agentApplicationId])
+  isVerified Boolean @default(false)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([agentApplicationId, type])
 }
 
 model AgentApplicationReview {

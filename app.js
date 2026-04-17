@@ -8,7 +8,7 @@ import passport from "passport";
 import "./config/passport.js";
 import authRoutes from "./modules/auth/auth.route.js";
 import userRoutes from "./modules/user/user.route.js";
-// import agentApplicationRoutes from "./modules/agent-application/agent-application.route.js";
+import agentApplicationRoutes from "./modules/agent-application/agent-application.route.js";
 import { prisma } from "./lib/prisma.js";
 
 console.log("PORT:", env.PORT);
@@ -34,7 +34,7 @@ app.get("/", async(req, res) => {
 
 app.use(`${API_URL}/auth`, authRoutes);
 app.use(`${API_URL}/user`, userRoutes);
-// app.use(`${API_URL}/agent-application`, agentApplicationRoutes);
+app.use(`${API_URL}/agent-application`, agentApplicationRoutes);
 
 
 // connectToDB();

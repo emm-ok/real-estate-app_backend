@@ -18,8 +18,10 @@ export const register = async (req, res) => {
     const parsed = registerSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      return res.status(400).json(parsed.error.format());
-    }
+    return res.status(400).json({
+      message: parsed.error.format(),
+    });
+  }
 
     // Get data from client
     const { name, email, password } = parsed.data;
@@ -161,6 +163,13 @@ export const login = async (req, res) => {
     }
     // Generate JWT Token
     generateToken(user.id, res);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLoginAt: new Date(),
+      }
+    })
 
     return res.status(200).json({
       success: true,

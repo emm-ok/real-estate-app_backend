@@ -1,14 +1,520 @@
+import { prisma } from "../../lib/prisma.js";
+import crypto from "crypto";
+import { updateAgentApplicationSchema } from "../../lib/validation.js";
+import { includes } from "zod";
 
+export const createAgentApplication = async (req, res) => {
+  try {
+    const existingApplication = await prisma.agentApplication.findFirst({
+      where: { userId: req.user.id },
+    });
 
-
-export const createAgentApplication = async(req, res) => {
-    try{
-        const { ...data } = req.body;
+    if (existingApplication) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have an active agent application",
+      });
     }
-}
 
-export const fetchAgentApplication = async(req, res) => {}
+    const ip =
+      req.headers["x-forwarded-for"]?.split(",")[0] ||
+      req.socket?.remoteAddress ||
+      "";
 
-export const updateAgentApplication = async(req, res) => {}
+    await prisma.agentApplication.create({
+      data: {
+        userId: req.user.id,
+        status: "DRAFT",
+        currentStep: 1,
+        verification: {
+          create: {
+            ipHash: crypto.createHash("sha256").update(ip).digest("hex") || "",
+            userAgent: req.headers["user-agent"],
+            riskScore: 0,
+          },
+        },
+        history: {
+          create: [
+            {
+              action: "CREATED",
+              performedById: req.user.id,
+              note: "Agent Application created",
+            },
+          ],
+        },
+      },
+    });
 
-export const deleteAgentApplication = async(req, res) => {}
+    return res.status(201).json({
+      success: true,
+      message: "Agent Application created successfully",
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to create agent application",
+    });
+  }
+};
+
+export const getMyAgentApplication = async (req, res) => {
+  try {
+    const existingApplication = await prisma.agentApplication.findFirst({
+      where: {
+        userId: req.user.id,
+        status: { not: "APPROVED" },
+      },
+      include: {
+        professional: true,
+        documents: true,
+        reviews: true,
+        history: true,
+      },
+    });
+
+    if (!existingApplication) {
+      return res.status(404).json({
+        success: false,
+        message: "Application not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Agent Application retrieved successfully",
+      application: existingApplication,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to fetch agent application",
+    });
+  }
+};
+
+export const updateAgentApplication = async (req, res) => {
+  try {
+    const parsed = updateAgentApplicationSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: parsed.error.format(),
+      });
+    }
+
+    const { step, professional } = parsed.data;
+    const { application } = req;
+
+    if (step && step > application.currentStep + 1) {
+      return res.status(400).json({
+        message: "Invalid step progression",
+      });
+    }
+
+    const updated = await prisma.agentApplication.update({
+      where: { id: application.id },
+      data: {
+        ...(step && { currentStep: step }),
+
+        ...(professional && {
+          professional: {
+            upsert: {
+              create: professional,
+              update: professional,
+            },
+          },
+        }),
+
+        history: {
+          create: {
+            action: "UPDATED",
+            performedById: req.user.id,
+            note: "Draft updated",
+          },
+        },
+      },
+      include: {
+        professional: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: "Agent Application updated successfully",
+      application: updated,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update agent application",
+    });
+  }
+};
+
+export const uploadAgentDocument = async (req, res) => {
+  try {
+    const { application } = req;
+    const { type } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "No file uploaded",
+      });
+    }
+
+    const document = await prisma.agentDocument.upsert({
+      where: {
+        agentApplicationId_type: {
+          agentApplicationId: application.id,
+          type,
+        },
+      },
+      update: {
+        url: req.file.path,
+        publicId: req.file.filename,
+        isVerified: false,
+      },
+      create: {
+        agentApplicationId: application.id,
+        type,
+        url: req.file.path,
+        publicId: req.file.filename,
+        isVerified: false,
+      },
+    });
+
+    await prisma.agentApplicationHistory.create({
+      data: {
+        agentApplicationId: application.id,
+        action: "DOCUMENT_UPLOADED",
+        performedById: req.user.id,
+        note: `Uploaded ${type}`,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `${type} uploaded successfully`,
+      document,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Upload failed",
+    });
+  }
+};
+
+export const deleteAgentDocument = async (req, res) => {
+  try {
+    const { application } = req;
+    const { type } = req.params;
+
+    const existing = await prisma.agentDocument.findUnique({
+      where: {
+        agentApplicationId_type: {
+          agentApplicationId: application.id,
+          type,
+        },
+      },
+    });
+
+    if (!existing) {
+      return res.status(404).json({
+        message: "Document not found",
+      });
+    }
+
+    await prisma.agentDocument.delete({
+      where: {
+        agentApplicationId_type: {
+          agentApplicationId: application.id,
+          type,
+        },
+      },
+    });
+
+    await prisma.agentApplicationHistory.create({
+      data: {
+        agentApplicationId: application.id,
+        action: "DOCUMENT_DELETED",
+        performedById: req.user.id,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${type} deleted succesfully`,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `Failed to delete document`,
+    });
+  }
+};
+
+export const deleteAgentApplication = async (req, res) => {
+  try {
+    const { application } = req;
+
+    await prisma.$transaction([
+      prisma.agentApplicationHistory.create({
+        data: {
+          agentApplicationId: application.id,
+          action: "DELETE_APPLICATION",
+          performedById: req.user.id,
+        },
+      }),
+      prisma.agentApplication.delete({
+        where: { id: application.id },
+      }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Application deleted successfully",
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete agent application",
+    });
+  }
+};
+
+export const submitAgentApplication = async (req, res) => {
+  try {
+    const { application } = req;
+
+    // TODO: check if user email is verified before submission
+
+    if (application.status === "PENDING") {
+      return res.status(400).json({
+        message: "Application already submitted",
+      });
+    }
+
+    if (!application.professional) {
+      return res.status(400).json({
+        message: "Professional information is required",
+      });
+    }
+
+    const documents = await prisma.agentDocument.findMany({
+      where: { agentApplicationId: application.id },
+    });
+
+    const requiredDocs = ["ID_CARD", "LICENSE", "SELFIE"];
+
+    const uploadedTypes = documents.map((doc) => doc.type);
+
+    const missingDocs = requiredDocs.filter(
+      (doc) => !uploadedTypes.includes(doc),
+    );
+
+    if (missingDocs.length > 0) {
+      return res.status(400).json({
+        message: "Missing required documents",
+        missingDocs,
+      });
+    }
+
+    const updated = await prisma.agentApplication.update({
+      where: { id: application.id },
+      data: {
+        status: "PENDING",
+        submittedAt: new Date(),
+        history: {
+          create: {
+            action: "SUBMITTED",
+            performedById: req.user.id,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      application: updated,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to submit agent application",
+    });
+  }
+};
+
+// Admin Actions
+export const getAgentApplications = async (req, res) => {
+  try {
+    const applications = await prisma.agentApplication.findMany({
+      where: { status: { not: "DRAFT" } },
+    });
+
+    if (!applications) {
+      return res.status(404).json({
+        message: "No applications found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Applications fetched successfully",
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to fetch agent applications",
+    });
+  }
+};
+
+export const getAgentApplicationById = async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+
+    if (!applicationId) {
+      return res.status(404).json({
+        message: "Application ID is required",
+      });
+    }
+
+    const application = await prisma.agentApplication.findUnique({
+      where: { id: applicationId },
+      include: {
+        professional: true,
+        document: true,
+        reviews: true,
+        verification: true,
+        history: true,
+      },
+    });
+
+    return res.status(200).json({
+      message: "Application fetched successfully",
+      application,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to fetch agent application",
+    });
+  }
+};
+
+export const verifyApplicationDocument = async (req, res) => {
+  try {
+    const { docId } = req.params;
+
+    // TODO: check if user email is verifed before verifying document
+
+    if (!docId) {
+      return res.status(400).json({
+        message: "Document Id is required",
+      });
+    }
+    const document = await prisma.agentDocument.update({
+      where: { id: docId },
+      data: { isVerified: true },
+    });
+
+    await prisma.agentApplicationHistory.create({
+      data: {
+        applicationId: document.applicationId,
+        action: "DOCUMENT_VERIFIED",
+        performedById: req.user.id,
+        note: `Verified ${document.type}`,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${document.type} Document Verified`,
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to Verify Document",
+    });
+  }
+};
+
+export const approveAgentApplication = async (req, res) => {
+  try{
+    const { applicationId } = req.params;
+
+  if (!applicationId) {
+    return res.status(404).json({
+      message: "Application ID is required",
+    });
+  }
+
+  const application = await prisma.agentApplication.findUnique({
+    where: { id: applicationId },
+  });
+
+  // TODO: check if user email is verifed before apporval
+
+  if (!application.professional) {
+    return res.status(400).json({
+      message: "All Professional fields are required",
+    });
+  }
+
+  const documents = await prisma.agentDocument.findMany({
+    where: { agentApplicationId: application.id },
+  });
+
+  const requiredDocs = ["ID_CARD", "LICENSE", "SELFIE"];
+
+  const uploadedTypes = documents.map((doc) => doc.type);
+
+  const missingDocs = requiredDocs.filter(
+    (doc) => !uploadedTypes.includes(doc),
+  );
+
+  if (missingDocs.length > 0) {
+    return res.status(400).json({
+      message: "Missing rquired documents",
+    });
+  }
+
+  const unVerifiedDocs = documents.filter((doc) => !doc.isVerified);
+  const responseMessage =
+    unVerifiedDocs.length > 0 ? unVerifiedDocs.join(", ") : unVerifiedDocs;
+
+  if (unVerifiedDocs.length > 0) {
+    return res.status(400).json({
+      message: `${responseMessage} Document(s) not verified yet`,
+    });
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.agentApplication.update({
+      where: { id: application.id },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
+    }),
+    await tx.agent.create({
+      data: {
+        userId: application.userId,
+      }
+    })
+    await tx.user.update({
+      where: { id: application.userId },
+      data: { role: "AGENT" },
+    });
+  });
+
+  } catch(error){
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to approve agent application"
+    })
+  }  
+};
