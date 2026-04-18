@@ -1,0 +1,775 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ENUMS
+
+enum Role {
+  USER
+  AGENT
+  ADMIN
+}
+
+enum CompanyRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ListingType {
+  FOR_SALE
+  FOR_RENT
+}
+
+enum PropertyType {
+  APARTMENT
+  LAND
+  COMMERCIAL
+  HOUSE
+  VILLA
+  TOWNHOUSE
+}
+
+enum PropertyCondition {
+  NEW
+  GOOD
+  RENOVATION
+}
+
+enum ApplicationAction {
+  CREATED
+  SUBMITTED 
+  APPROVED 
+  REJECTED 
+  UPDATED
+  DOCUMENT_UPLOADED
+  DOCUMENT_DELETED
+  DELETE_APPLICATION
+  DOCUMENT_VERIFIED
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum Status {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum ListingStatus {
+  ACTIVE
+  DEACTIVATED
+}
+
+enum ReviewDecision {
+  APPROVED
+  REJECTED
+}
+
+enum AgentDocumentType {
+  ID_CARD
+  LICENSE
+  SELFIE
+}
+
+enum AgentSpecialization {
+  RESIDENTIAL
+  COMMERCIAL
+  LUXURY
+  STUDENT
+  SHORTLET
+  LAND
+}
+
+enum CompanyDocumentType {
+  CERTIFICATE
+  LICENSE
+  OWNER_ID
+}
+
+enum AuditEntityType {
+  USER
+  COMPANY
+  LISTING
+  AGENT_APPLICATION
+  COMPANY_APPLICATION
+  LISTING_APPLICATION
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+}
+
+enum Provider {
+  LOCAL
+  GOOGLE
+  APPLE
+}
+
+// companyId String?
+// company   Company? @relation(fields: [companyId], references: [id])
+// USER
+
+model User {
+  id       String  @id @default(uuid())
+  name     String
+  email    String  @unique
+  password String?
+
+  googleId String? @unique
+
+  phone    String?
+  bio      String?
+  image    String?
+
+  address String?
+  city    String?
+  state   String?
+  country String?
+  lat     Float?
+  lng     Float?
+
+  role Role @default(USER)
+
+  companiesOwned    Company[]       @relation("CompanyOwner")
+  companyMembership CompanyMember[]
+  agent             Agent?
+
+  bookmarks Bookmark[]
+  reviews   Review[]
+
+  sentMessages     Message[] @relation("MessageSender")
+  receivedMessages Message[] @relation("MessageReceiver")
+
+  status        Status  @default(ACTIVE)
+  emailVerified Boolean @default(false)
+  emailVerifiedAt DateTime?
+  emailVerificationToken String?
+  emailVerificationExpiresAt DateTime?
+
+  passwordResetToken String?
+  passwordResetExpiresAt DateTime?
+  passwordChangedAt DateTime?
+
+  lastLoginAt DateTime?
+  provider Provider @default(LOCAL)
+
+  adminAuditLogs AdminAuditLog[] @relation("AdminRelation")
+
+  agentApplications   AgentApplication[]
+  companyApplication CompanyApplication[]
+
+  agentApplicationReviews   AgentApplicationReview[]
+  companyApplicationReviews CompanyApplicationReview[]
+
+  agentApplicationHistoriesPerformed   AgentApplicationHistory[]
+  companyApplicationHistoriesPerformed CompanyApplicationHistory[]
+  listingApplicationHistoriesPerformed ListingApplicationHistory[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([email])
+  @@index([status])
+  @@index([role])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+// AGENT
+
+model Agent {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  listings Listing[]
+
+  avgRating    Float @default(0)
+  totalReviews Int   @default(0)
+
+  status       Status               @default(ACTIVE)
+  isVerified     Boolean              @default(false)
+  listingApplications ListingApplication[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
+}
+
+// COMPANY
+
+model Company {
+  id      String  @id @default(uuid())
+  name    String  @unique
+  email   String
+  logo    String?
+  website String?
+
+  ownerId String
+  owner   User   @relation("CompanyOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  agents   Agent[]
+  members  CompanyMember[]
+  listings Listing[]
+
+  status Status @default(ACTIVE)
+
+  invites      Invite[]
+  // targetCompanyLogs   AdminAuditLog[]      @relation("TargetCompany")
+  listingApplications ListingApplication[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+// COMPANY MEMBER (JOIN TABLE)
+
+model CompanyMember {
+  id String @id @default(uuid())
+
+  userId    String
+  companyId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  role   CompanyRole
+  status Status      @default(ACTIVE)
+
+  createdAt DateTime @default(now())
+
+  invitesSent    Invite[] @relation("InviteSender")
+  invitesRevoked Invite[] @relation("InviteRevoker")
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+}
+
+// LISTING
+
+model Listing {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  slug        String  @unique
+
+  price    Float
+  currency String @default("USD")
+
+  type        PropertyType
+  listingType ListingType
+  condition PropertyCondition?
+
+  bedrooms      Int?
+  bathrooms     Int?
+  parkingSpaces Int?
+
+  areaSize Float?
+  areaUnit String? @default("sqm")
+
+  lotSize   Float?
+  yearBuilt Int?
+
+  furnishing String?
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  images    Media[]
+  reviews   Review[]
+  bookmarks Bookmark[]
+
+  address String?
+  city    String?
+  state   String?
+  country String?
+  lat     Float?
+  lng     Float?
+
+  listingApplications ListingApplication[]
+
+  status ListingStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([agentId])
+  @@index([companyId])
+  @@index([deletedAt])
+  @@index([city, country, price])
+  @@index([lat, lng])
+}
+
+// MEDIA
+
+model Media {
+  id        String @id @default(uuid())
+  url       String
+  listingId String
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([listingId])
+}
+
+// BOOKMARK
+
+model Bookmark {
+  id String @id @default(uuid())
+
+  userId    String
+  listingId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([userId, listingId])
+}
+
+// REVIEW
+
+model Review {
+  id String @id @default(uuid())
+
+  userId    String
+  listingId String
+
+  rating  Int     @db.SmallInt
+  comment String?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, listingId])
+}
+
+// MESSAGE
+
+model Message {
+  id String @id @default(uuid())
+
+  senderId   String
+  receiverId String
+
+  content String
+  isRead    Boolean @default(false)
+
+  sender   User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([senderId, receiverId])
+}
+
+// AGENT APPLICATION
+
+model AgentApplication {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status      ApplicationStatus @default(DRAFT)
+  currentStep Int?         @default(0)
+  version     Int               @default(1)
+
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+
+  professional AgentProfessional?
+  documents    AgentDocument[]
+  reviews AgentApplicationReview[]
+  verification AgentApplicationVerification?
+
+  history    AgentApplicationHistory[]
+  isArchived Boolean                   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+}
+
+model AgentProfessional {
+  id String @id @default(uuid())
+
+  agentApplicationId String           @unique
+  agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
+
+  licenseNumber   String
+  licenseCountry  String
+  specialization  AgentSpecialization
+  yearsExperience Int
+  companyName     String?
+  website         String?
+}
+
+model AgentDocument {
+  id String @id @default(uuid())
+
+  agentApplicationId String
+  agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
+
+  type AgentDocumentType // ID_CARD, LICENSE, SELFIE
+  url  String
+  publicId String
+
+  isVerified Boolean @default(false)
+
+  createdAt       DateTime @default(now())
+
+  @@unique([agentApplicationId, type])
+}
+
+model AgentApplicationReview {
+  id String @id @default(uuid())
+
+  agentApplicationId String
+  agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  reviewer   User   @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  decision ReviewDecision
+  notes    String?
+  reason   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([agentApplicationId])
+  @@index([reviewerId])
+}
+
+model AgentApplicationVerification {
+  id String @id @default(uuid())
+
+  agentApplicationId String           @unique
+  agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
+
+  ipHash    String?
+  userAgent String?
+  riskScore Float?
+  isVerified  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+model AgentApplicationHistory {
+  id String @id @default(uuid())
+
+  agentApplicationId String
+  agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
+
+  action ApplicationAction
+
+  performedById String?
+  performedBy   User?   @relation(fields: [performedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([agentApplicationId])
+  @@index([performedById])
+}
+
+// COMPANY APPLICATION
+
+model CompanyApplication {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status      ApplicationStatus @default(DRAFT)
+  currentStep Int?              @default(1)
+  version     Int               @default(1)
+
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+
+  rejectionReason String?
+
+  companyInfo  CompanyInfo?
+  documents    CompanyDocument[]
+  verification CompanyApplicationVerification?
+  adminReviews CompanyApplicationReview[]
+
+  history CompanyApplicationHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model CompanyApplicationHistory {
+  id String @id @default(uuid())
+
+  companyApplicationId String
+  companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
+
+  action ApplicationAction
+
+  performedById String?
+  performedBy   User?   @relation(fields: [performedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyApplicationId])
+  @@index([performedById])
+}
+
+model CompanyApplicationReview {
+  id String @id @default(uuid())
+
+  companyApplicationId String
+  companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  reviewer   User   @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+
+  decision ReviewDecision
+  notes    String?
+  reason   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([companyApplicationId])
+  @@index([reviewerId])
+}
+
+model CompanyApplicationVerification {
+  id String @id @default(uuid())
+
+  companyApplicationId String             @unique
+  companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
+
+  ipHash    String?
+  userAgent String?
+  riskScore Float?
+
+  createdAt DateTime @default(now())
+}
+
+model CompanyInfo {
+  id String @id @default(uuid())
+
+  companyApplicationId String             @unique
+  companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
+
+  name               String
+  email              String
+  logo               String?
+  website            String?
+  address            String?
+  type               String?
+  registrationNumber String?
+  licenseNumber      String?
+}
+
+model CompanyDocument {
+  id String @id @default(uuid())
+
+  companyApplicationId String
+  companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
+
+  type CompanyDocumentType // CERTIFICATE, LICENSE, OWNER_ID
+  url  String
+
+  @@index([companyApplicationId])
+}
+
+// LISTING APPLICATION
+
+model ListingApplication {
+  id String @id @default(uuid())
+
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  listingId String?
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  title       String?
+  description String?
+  price       Float?
+  currency    String  @default("USD")
+
+  type        PropertyType?
+  listingType ListingType?
+  condition   PropertyCondition?
+
+  bedrooms      Int?
+  bathrooms     Int?
+  parkingSpaces Int?
+
+  areaSize Float?
+  areaUnit String? @default("sqm")
+
+  lotSize   Float?
+  yearBuilt Int?
+
+  furnishing String?
+
+  address String?
+  city    String?
+  state   String?
+  country String?
+  lat     Float?
+  lng     Float?
+
+  status      ApplicationStatus @default(DRAFT)
+  currentStep Int?              @default(1)
+  version     Int?              @default(1)
+
+  submittedAt DateTime?
+  expiresAt   DateTime?
+
+  history ListingApplicationHistory[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([deletedAt])
+  @@index([agentId])
+  @@index([companyId])
+  @@index([listingId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([city, country, price])
+  @@index([lat, lng])
+}
+
+model ListingApplicationHistory {
+  id String @id @default(uuid())
+
+  listingApplicationId String
+  listingApplication   ListingApplication @relation(fields: [listingApplicationId], references: [id], onDelete: Cascade)
+
+  action ApplicationAction
+
+  performedById String?
+  performedBy   User?   @relation(fields: [performedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([listingApplicationId])
+  @@index([performedById])
+}
+
+// INVITE
+
+model Invite {
+  id          String         @id @default(uuid())
+  email       String
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId   String
+  role        CompanyRole
+  invitedBy   CompanyMember  @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitedById String
+  status      InviteStatus   @default(PENDING)
+  token       String         @unique
+  createdAt   DateTime       @default(now())
+  acceptedAt  DateTime?
+  revokedAt   DateTime?
+  revokedBy   CompanyMember? @relation("InviteRevoker", fields: [revokedById], references: [id], onDelete: Cascade)
+  revokedById String?
+  expiresAt   DateTime
+
+  @@index([token, status])
+  @@index([companyId])
+  @@index([invitedById])
+  @@index([email])
+}
+
+// ADMIN AUDIT LOG
+
+model AdminAuditLog {
+  id      String @id @default(uuid())
+  admin   User   @relation("AdminRelation", fields: [adminId], references: [id], onDelete: Cascade)
+  adminId String
+
+  entityType AuditEntityType
+  entityId   String
+
+  targetUserId    String?
+  targetCompanyId String?
+  action          AuditAction
+  notes           String?
+  ipHash          String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([adminId])
+  @@index([entityType, entityId])
+  @@index([targetUserId])
+  @@index([targetCompanyId])
+  @@index([createdAt])
+}
