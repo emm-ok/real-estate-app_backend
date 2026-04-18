@@ -153,6 +153,13 @@ export const login = async (req, res) => {
         message: "Invalid email or password",
       });
     }
+
+    if(user && user.provider !== "LOCAL"){
+      return res.status(401).json({
+        success: true,
+        message: `Email already registered via ${user.provider}. Please use ${user.provider} to login.`,
+      })
+    }
     // Verify Password
     const isPasswordValid = await bcrypt.compare(password, user.password);
 

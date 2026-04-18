@@ -94,6 +94,15 @@ enum AgentDocumentType {
   SELFIE
 }
 
+enum AgentSpecialization {
+  RESIDENTIAL
+  COMMERCIAL
+  LUXURY
+  STUDENT
+  SHORTLET
+  LAND
+}
+
 enum CompanyDocumentType {
   CERTIFICATE
   LICENSE
@@ -160,6 +169,7 @@ model User {
 
   status        Status  @default(ACTIVE)
   emailVerified Boolean @default(false)
+  emailVerifiedAt DateTime?
   emailVerificationToken String?
   emailVerificationExpiresAt DateTime?
 
@@ -414,7 +424,7 @@ model AgentApplication {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   status      ApplicationStatus @default(DRAFT)
-  currentStep Int?
+  currentStep Int?         @default(0)
   version     Int               @default(1)
 
   submittedAt DateTime?
@@ -444,7 +454,7 @@ model AgentProfessional {
 
   licenseNumber   String
   licenseCountry  String
-  specialization  String
+  specialization  AgentSpecialization
   yearsExperience Int
   companyName     String?
   website         String?

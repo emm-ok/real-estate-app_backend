@@ -2,6 +2,8 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { env } from "./env.js";
 import { prisma } from "../lib/prisma.js";
+import { sendEmail } from "../utils/sendEmail.js";
+import { VERIFY_EMAIL_SUCCESS } from "../lib/emailTemplates.js";
 
 passport.use(
   new GoogleStrategy(
@@ -44,6 +46,7 @@ passport.use(
               lastLoginAt: new Date(),
               image: user.image ?? image,
               provider: user.provider ?? "GOOGLE",
+              emailVerified: true,
             },
           });
         } else {
@@ -65,6 +68,7 @@ passport.use(
                 provider: user.provider ?? "GOOGLE",
                 image: user.image ?? image,
                 lastLoginAt: new Date(),
+                emailVerified: true,
               },
             });
           } else {
@@ -78,10 +82,20 @@ passport.use(
                 googleId: profile.id,
                 provider: "GOOGLE",
                 image,
+                emailVerified: true,
               },
             });
           }
+          await sendEmail({
+            subject: "Email Verification Successful",
+            html: VERIFY_EMAIL_SUCCESS.replace(
+              "{{LOGIN_URL}}",
+              `${env.CLIENT_URL}/sign-in`,
+            ),
+          });
+
         }
+
 
         return done(null, { ...user, authType });
       } catch (error) {

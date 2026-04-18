@@ -24,6 +24,9 @@ export const validateApplicationUpdate = async (req, res, next) => {
         userId: req.user.id,
         status: { in: ["DRAFT", "REJECTED"] },
       },
+      include: {
+        professional: true,
+      }
     });
 
     if (!application) {
