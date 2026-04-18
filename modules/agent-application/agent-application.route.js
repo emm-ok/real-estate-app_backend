@@ -6,11 +6,14 @@ import {
   validateUser,
 } from "../../middlewares/agentApplication.middleware.js";
 import {
+  approveAgentApplication,
   createAgentApplication,
   deleteAgentApplication,
   deleteAgentDocument,
+  getAgentApplicationById,
   getAgentApplications,
   getMyAgentApplication,
+  rejectAgentApplication,
   submitAgentApplication,
   updateAgentApplication,
   uploadAgentDocument,
@@ -26,10 +29,10 @@ router.use(validateAuth); // middleware validateAuthentication
 
 // Admin Actions
 router.get("/all-applications", requireAdmin, getAgentApplications);
-// router.get("/:applicationId", requireAdmin, getAgentApplicationById);
+router.get("/:applicationId", requireAdmin, getAgentApplicationById);
 router.patch("/doc/:docId", requireAdmin, verifyApplicationDocument);
-// router.patch("/:applicationId", requireAdmin, approveAgentApplication);
-// router.patch("/:applicationId", requireAdmin, rejectAgentApplication);
+router.patch("/:applicationId/approve", requireAdmin, approveAgentApplication);
+router.patch("/:applicationId/reject", requireAdmin, rejectAgentApplication);
 
 router.use(validateUser); // middleware (check req.user exist or status is ACTIVE)
 

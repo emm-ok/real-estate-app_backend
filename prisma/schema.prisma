@@ -124,6 +124,7 @@ enum AuditAction {
   DELETE
   APPROVE
   REJECT
+  VERIFY_DOCUMENT
 }
 
 enum Provider {

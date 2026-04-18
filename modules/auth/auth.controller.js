@@ -102,6 +102,7 @@ export const verifyEmail = async (req, res) => {
       },
       data: {
         emailVerified: true,
+        emailVerifiedAt: new Date(),
         emailVerificationToken: null,
         emailVerificationExpiresAt: null,
       },
