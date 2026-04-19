@@ -17,3 +17,13 @@ export const checkIfComplete = async(applicationId) => {
 
     return requiredDocs.every((doc) => uploadedDocTypes.includes(doc));
 }
+
+
+export const generateIp = (req) => {
+  const ip =
+    req.headers["x-forwarded-for"]?.split(",")[0] ||
+    req.socket?.remoteAddress ||
+    "";
+
+  return ip;
+};

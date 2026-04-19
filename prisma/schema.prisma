@@ -20,7 +20,6 @@ enum Role {
 }
 
 enum CompanyRole {
-  OWNER
   ADMIN
   MEMBER
 }
@@ -538,7 +537,7 @@ model CompanyApplication {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   status      ApplicationStatus @default(DRAFT)
-  currentStep Int?              @default(1)
+  currentStep Int?              @default(0)
   version     Int               @default(1)
 
   submittedAt DateTime?
@@ -636,8 +635,11 @@ model CompanyDocument {
 
   type CompanyDocumentType // CERTIFICATE, LICENSE, OWNER_ID
   url  String
+  publicId String
 
-  @@index([companyApplicationId])
+  isVerified Boolean @default(false)
+
+  @@index([companyApplicationId, type])
 }
 
 // LISTING APPLICATION
