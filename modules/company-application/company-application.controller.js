@@ -1,23 +1,27 @@
-import { prisma } from "../../lib/prisma.js";
-import crypto from "crypto";
-import { stepSchemas } from "../../lib/validation.js";
-import { generateIp } from "../../utils/checkCompletion.js";
 import cloudinary from "../../config/cloudinary.js";
+import { prisma } from "../../lib/prisma.js";
+import { companyStepSchemas } from "../../lib/validation.js";
+import {
+  checkIfComplete,
+  checkUploadComplete,
+  generateIp,
+} from "../../utils/checkCompletion.js";
+import crypto from "crypto";
 
-export const createAgentApplication = async (req, res) => {
+export const createCompanyApplication = async (req, res) => {
   try {
-    const existingApplication = await prisma.agentApplication.findFirst({
+    const existingApplication = await prisma.companyApplication.findFirst({
       where: { userId: req.user.id },
     });
 
     if (existingApplication) {
       return res.status(400).json({
         success: false,
-        message: "You already have an active agent application",
+        message: "You already have an active company application",
       });
     }
     const ip = generateIp(req);
-    await prisma.agentApplication.create({
+    await prisma.companyApplication.create({
       data: {
         userId: req.user.id,
         status: "DRAFT",
@@ -34,7 +38,7 @@ export const createAgentApplication = async (req, res) => {
             {
               action: "CREATED",
               performedById: req.user.id,
-              note: "Agent Application created",
+              note: "Company Application created",
             },
           ],
         },
@@ -43,27 +47,27 @@ export const createAgentApplication = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Agent Application created successfully",
+      message: "Company Application created successfully",
     });
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to create agent application",
+      message: "Failed to create company application",
     });
   }
 };
 
-export const getMyAgentApplication = async (req, res) => {
+export const getMyCompanyApplication = async (req, res) => {
   try {
-    const existingApplication = await prisma.agentApplication.findFirst({
+    const existingApplication = await prisma.companyApplication.findFirst({
       where: {
         userId: req.user.id,
         status: { not: "APPROVED" },
       },
       include: {
-        professional: true,
+        companyInfo: true,
         documents: true,
-        reviews: true,
+        adminReviews: true,
         history: true,
       },
     });
@@ -77,18 +81,18 @@ export const getMyAgentApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Agent Application retrieved successfully",
+      message: "Company Application retrieved successfully",
       application: existingApplication,
     });
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to fetch agent application",
+      message: "Failed to fetch company application",
     });
   }
 };
 
-export const updateAgentApplication = async (req, res) => {
+export const updateCompanyApplication = async (req, res) => {
   try {
     const { step } = req.body;
     const { application } = req;
@@ -102,7 +106,7 @@ export const updateAgentApplication = async (req, res) => {
       });
     }
 
-    const schema = stepSchemas[step];
+    const schema = companyStepSchemas[step];
     if (!schema) {
       return res.status(400).json({ message: "Invalid step" });
     }
@@ -119,38 +123,26 @@ export const updateAgentApplication = async (req, res) => {
     let updateData = {};
 
     if (step === 1) {
-      updateData.professional = {
+      updateData.companyInfo = {
         upsert: {
-          create: data.professional,
-          update: data.professional,
+          create: data.companyInfo,
+          update: data.companyInfo,
         },
       };
     }
 
     if (step === 2) {
-      const documents = await prisma.agentDocument.findMany({
-        where: { agentApplicationId: application.id },
-      });
-
-      const requiredDocs = ["ID_CARD", "LICENSE", "SELFIE"];
-
-      const uploadedTypes = documents.map((doc) => doc.type);
-
-      const missingDocs = requiredDocs.filter(
-        (doc) => !uploadedTypes.includes(doc),
-      );
-
-      if (missingDocs.length > 0) {
+      const isComplete = await checkUploadComplete(application, res);
+      if (!isComplete) {
         return res.status(400).json({
-          message: "Missing required documents",
-          missingDocs,
+          message: "Please upload all required documents before submission",
         });
       }
     }
 
     updateData.currentStep = Math.max(application.currentStep, step);
 
-    const updated = await prisma.agentApplication.update({
+    const updated = await prisma.companyApplication.update({
       where: { id: application.id },
       data: {
         ...updateData,
@@ -164,7 +156,7 @@ export const updateAgentApplication = async (req, res) => {
         },
       },
       include: {
-        professional: true,
+        companyInfo: true,
       },
     });
 
@@ -181,7 +173,7 @@ export const updateAgentApplication = async (req, res) => {
   }
 };
 
-export const uploadAgentDocument = async (req, res) => {
+export const uploadCompanyDocument = async (req, res) => {
   try {
     const { application } = req;
     const { type } = req.params;
@@ -192,10 +184,10 @@ export const uploadAgentDocument = async (req, res) => {
       });
     }
 
-    const document = await prisma.agentDocument.upsert({
+    const document = await prisma.companyDocument.upsert({
       where: {
-        agentApplicationId_type: {
-          agentApplicationId: application.id,
+        companyApplicationId_type: {
+          companyApplicationId: application.id,
           type,
         },
       },
@@ -205,7 +197,7 @@ export const uploadAgentDocument = async (req, res) => {
         isVerified: false,
       },
       create: {
-        agentApplicationId: application.id,
+        companyApplicationId: application.id,
         type,
         url: req.file.path,
         publicId: req.file.filename,
@@ -213,9 +205,16 @@ export const uploadAgentDocument = async (req, res) => {
       },
     });
 
-    await prisma.agentApplicationHistory.create({
+    await prisma.companyApplication.update({
+      where: { id: application.id },
       data: {
-        agentApplicationId: application.id,
+        currentStep: Math.max(application.currentStep, 2), // Ensure user can't skip to step 3 without uploading document
+      },
+    });
+
+    await prisma.companyApplicationHistory.create({
+      data: {
+        companyApplicationId: application.id,
         action: "DOCUMENT_UPLOADED",
         performedById: req.user.id,
         note: `Uploaded ${type}`,
@@ -235,15 +234,15 @@ export const uploadAgentDocument = async (req, res) => {
   }
 };
 
-export const deleteAgentDocument = async (req, res) => {
+export const deleteCompanyDocument = async (req, res) => {
   try {
     const { application } = req;
     const { type } = req.params;
 
-    const existing = await prisma.agentDocument.findUnique({
+    const existing = await prisma.companyDocument.findUnique({
       where: {
-        agentApplicationId_type: {
-          agentApplicationId: application.id,
+        companyApplicationId_type: {
+          companyApplicationId: application.id,
           type,
         },
       },
@@ -254,7 +253,6 @@ export const deleteAgentDocument = async (req, res) => {
         message: "Document not found",
       });
     }
-
     const result = await cloudinary.uploader.destroy(existing.publicId, {
       resource_type: "raw",
     });
@@ -263,18 +261,18 @@ export const deleteAgentDocument = async (req, res) => {
       throw new Error("Cloudinary deletion failed");
     }
 
-    await prisma.agentDocument.delete({
+    await prisma.companyDocument.delete({
       where: {
-        agentApplicationId_type: {
-          agentApplicationId: application.id,
+        companyApplicationId_type: {
+          companyApplicationId: application.id,
           type,
         },
       },
     });
 
-    await prisma.agentApplicationHistory.create({
+    await prisma.companyApplicationHistory.create({
       data: {
-        agentApplicationId: application.id,
+        companyApplicationId: application.id,
         action: "DOCUMENT_DELETED",
         performedById: req.user.id,
       },
@@ -292,19 +290,19 @@ export const deleteAgentDocument = async (req, res) => {
   }
 };
 
-export const deleteAgentApplication = async (req, res) => {
+export const deleteCompanyApplication = async (req, res) => {
   try {
     const { application } = req;
 
     await prisma.$transaction([
-      prisma.agentApplicationHistory.create({
+      prisma.companyApplicationHistory.create({
         data: {
-          agentApplicationId: application.id,
+          companyApplicationId: application.id,
           action: "DELETE_APPLICATION",
           performedById: req.user.id,
         },
       }),
-      prisma.agentApplication.delete({
+      prisma.companyApplication.delete({
         where: { id: application.id },
       }),
     ]);
@@ -316,15 +314,16 @@ export const deleteAgentApplication = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to delete agent application",
+      message: "Failed to delete company application",
     });
   }
 };
 
-export const submitAgentApplication = async (req, res) => {
+export const submitCompanyApplication = async (req, res) => {
   try {
     const { application } = req;
 
+    console.log("Application Point", application);
     // const user = await prisma.user.findUnique({
     //   where: { id: application.userId },
     // });
@@ -347,32 +346,21 @@ export const submitAgentApplication = async (req, res) => {
       });
     }
 
-    if (!application.professional) {
+    if (!application.companyInfo) {
       return res.status(400).json({
-        message: "Professional information is required",
+        message: "Company information is required",
       });
     }
 
-    const documents = await prisma.agentDocument.findMany({
-      where: { agentApplicationId: application.id },
-    });
-
-    const requiredDocs = ["ID_CARD", "LICENSE", "SELFIE"];
-
-    const uploadedTypes = documents.map((doc) => doc.type);
-
-    const missingDocs = requiredDocs.filter(
-      (doc) => !uploadedTypes.includes(doc),
-    );
-
-    if (missingDocs.length > 0) {
+    const isComplete = await checkUploadComplete(application, res);
+    if (!isComplete) {
       return res.status(400).json({
-        message: "Missing required documents",
-        missingDocs,
+        message: "Please upload all required documents before submission",
       });
     }
+    console.log("All documents uploaded, ready for submission");
 
-    const updated = await prisma.agentApplication.update({
+    const updated = await prisma.companyApplication.update({
       where: { id: application.id },
       data: {
         status: "PENDING",
@@ -388,20 +376,21 @@ export const submitAgentApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Application submittd successfully",
+      message: "Application submitted successfully",
     });
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to submit agent application",
+      message: "Failed to submit company application",
     });
   }
 };
 
 // Admin Actions
-export const getAgentApplications = async (req, res) => {
+
+export const getCompanyApplications = async (req, res) => {
   try {
-    const applications = await prisma.agentApplication.findMany({
+    const applications = await prisma.companyApplication.findMany({
       where: { status: { not: "DRAFT" } },
     });
 
@@ -419,12 +408,12 @@ export const getAgentApplications = async (req, res) => {
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to fetch agent applications",
+      message: "Failed to fetch company applications",
     });
   }
 };
 
-export const getAgentApplicationById = async (req, res) => {
+export const getCompanyApplicationById = async (req, res) => {
   try {
     const { applicationId } = req.params;
 
@@ -434,12 +423,12 @@ export const getAgentApplicationById = async (req, res) => {
       });
     }
 
-    const application = await prisma.agentApplication.findUnique({
+    const application = await prisma.companyApplication.findUnique({
       where: { id: applicationId },
       include: {
-        professional: true,
+        companyInfo: true,
         documents: true,
-        reviews: true,
+        adminReviews: true,
         verification: true,
         history: true,
       },
@@ -451,7 +440,7 @@ export const getAgentApplicationById = async (req, res) => {
       });
     }
 
-    await prisma.agentApplication.update({
+    await prisma.companyApplication.update({
       where: { id: application.id },
       data: {
         reviewedAt: new Date(),
@@ -465,7 +454,7 @@ export const getAgentApplicationById = async (req, res) => {
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to fetch agent application",
+      message: "Failed to fetch company application",
     });
   }
 };
@@ -481,28 +470,16 @@ export const verifyApplicationDocument = async (req, res) => {
         message: "Document Id is required",
       });
     }
-
-    const document = await prisma.agentDocument.findUnique({
-      where: {
-        id: docId,
-      },
-    });
-
-    if (!document) {
-      return res.status(404).json({
-        message: "Document not found",
-      });
-    }
-    await prisma.agentDocument.update({
-      where: { id: document.id },
+    const document = await prisma.companyDocument.update({
+      where: { id: docId },
       data: { isVerified: true },
     });
 
-    const application = await prisma.agentApplication.findUnique({
-      where: { id: document.agentApplicationId },
+    const application = await prisma.companyApplication.findUnique({
+      where: { id: document.companyApplicationId },
     });
 
-    await prisma.agentApplicationHistory.create({
+    await prisma.companyApplicationHistory.create({
       data: {
         applicationId: document.applicationId,
         action: "DOCUMENT_VERIFIED",
@@ -514,7 +491,7 @@ export const verifyApplicationDocument = async (req, res) => {
     await prisma.adminAuditLog.create({
       data: {
         adminId: req.user.id,
-        entityType: "AGENT_APPLICATION",
+        entityType: "COMPANY_APPLICATION",
         targetUserId: application.userId,
         action: "VERIFY_DOCUMENT",
         notes: `Verified user ${application.userId} ${document.type} document`,
@@ -535,7 +512,7 @@ export const verifyApplicationDocument = async (req, res) => {
   }
 };
 
-export const approveAgentApplication = async (req, res) => {
+export const approveCompanyApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
 
@@ -545,30 +522,25 @@ export const approveAgentApplication = async (req, res) => {
       });
     }
 
-    const application = await prisma.agentApplication.findUnique({
+    const application = await prisma.companyApplication.findUnique({
       where: { id: applicationId },
       include: {
-        professional: true,
+        companyInfo: true,
       },
     });
 
-    if (!application) {
-      return res.status(404).json({
-        message: "Application not found",
-      });
-    }
     // TODO: check if user email is verifed before apporval
-    if (!application.professional) {
+    if (!application.companyInfo) {
       return res.status(400).json({
-        message: "All Professional fields are required",
+        message: "All Company fields are required",
       });
     }
 
-    const documents = await prisma.agentDocument.findMany({
-      where: { agentApplicationId: application.id },
+    const documents = await prisma.companyDocument.findMany({
+      where: { companyApplicationId: application.id },
     });
 
-    const requiredDocs = ["ID_CARD", "LICENSE", "SELFIE"];
+    const requiredDocs = ["CERTIFICATE", "LICENSE", "OWNER_ID"];
 
     const uploadedTypes = documents.map((doc) => doc.type);
 
@@ -595,35 +567,46 @@ export const approveAgentApplication = async (req, res) => {
     }
     const ip = generateIp(req);
 
-    const updated = await prisma.$transaction(async (tx) => {
-      (await tx.agentApplication.update({
-        where: { id: application.id },
-        data: {
-          status: "APPROVED",
-          approvedAt: new Date(),
-        },
-      }),
-        await tx.agent.create({
-          data: {
-            userId: application.userId,
-          },
-        }));
-      await tx.user.update({
-        where: { id: application.userId },
-        data: { role: "AGENT" },
-      });
-      await tx.adminAuditLog.create({
-        data: {
-          adminId: req.user.id,
-          entityId: applicationId,
-          entityType: "AGENT_APPLICATION",
-          targetUserId: application.userId,
-          action: "APPROVE",
-          notes: `Approved user ${application.userId}`,
-          ipHash: crypto.createHash("sha256").update(ip).digest("hex") || "",
-          userAgent: req.headers["user-agent"],
-        },
-      });
+    const updated = await prisma.companyApplication.update({
+      where: { id: application.id },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
+      include: {
+        companyInfo: true,
+      },
+    });
+
+    const company = await prisma.company.create({
+      data: {
+        ownerId: application.userId,
+        name: application.companyInfo.name,
+        email: application.companyInfo.email,
+        logo: application.companyInfo.logo,
+        website: application.companyInfo.website,
+      },
+    });
+    await prisma.companyMember.create({
+      data: {
+        userId: application.userId,
+        companyId: company.id,
+        role: "ADMIN",
+      },
+    });
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user.id,
+        entityId: applicationId,
+        entityType: "COMPANY_APPLICATION",
+        targetUserId: application.userId,
+        targetCompanyId: company.id,
+        action: "APPROVE",
+        notes: `Approved company ${company.id}`,
+        ipHash: crypto.createHash("sha256").update(ip).digest("hex") || "",
+        userAgent: req.headers["user-agent"],
+      },
     });
 
     return res.status(200).json({
@@ -634,12 +617,12 @@ export const approveAgentApplication = async (req, res) => {
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to approve agent application",
+      message: "Failed to approve company application",
     });
   }
 };
 
-export const rejectAgentApplication = async (req, res) => {
+export const rejectCompanyApplication = async (req, res) => {
   try {
     const { applicationId } = req.params;
     const { notes, reason } = req.body;
@@ -649,29 +632,22 @@ export const rejectAgentApplication = async (req, res) => {
         message: "Application ID is required ",
       });
     }
-    const application = await prisma.agentApplication.findUnique({
+    const application = await prisma.companyApplication.findUnique({
       where: { id: applicationId },
     });
-
-    if (!application) {
-      return res.status(404).json({
-        message: "Application not found",
-      });
-    }
-
     const ip = generateIp(req);
 
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.agentApplication.update({
+      await tx.companyApplication.update({
         where: { id: applicationId },
         data: {
           status: "REJECTED",
           rejectedAt: new Date(),
         },
       });
-      await tx.agentApplicationReview.create({
+      await tx.companyApplicationReview.create({
         data: {
-          agentApplicationId: applicationId,
+          companyApplicationId: applicationId,
           reviewerId: req.user.id,
           decision: "REJECTED",
           notes: notes || "",
@@ -682,7 +658,7 @@ export const rejectAgentApplication = async (req, res) => {
         data: {
           adminId: req.user.id,
           entityId: applicationId,
-          entityType: "AGENT_APPLICATION",
+          entityType: "COMPANY_APPLICATION",
           targetUserId: application.userId,
           action: "REJECT",
           notes: `Rejected user ${application.userId}`,
@@ -694,13 +670,13 @@ export const rejectAgentApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Application rejectedq successfully`,
+      message: `Application rejected successfully`,
       updated,
     });
   } catch (error) {
     console.error(error.message);
     return res.status(500).json({
-      message: "Failed to reject agent application",
+      message: "Failed to reject company application",
     });
   }
 };
