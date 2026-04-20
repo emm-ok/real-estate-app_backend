@@ -46,14 +46,23 @@ enum PropertyCondition {
 
 enum ApplicationAction {
   CREATED
-  SUBMITTED 
-  APPROVED 
-  REJECTED 
+  SUBMITTED
+  APPROVED
+  REJECTED
   UPDATED
   DOCUMENT_UPLOADED
   DOCUMENT_DELETED
   DELETE_APPLICATION
   DOCUMENT_VERIFIED
+}
+
+enum ListingAction {
+  DRAFTED
+  UPDATED
+  SUBMITTED
+  UPLOADED_MEDIA
+  DELETED_MEDIA
+  ARCHIVED
 }
 
 enum ApplicationStatus {
@@ -78,6 +87,7 @@ enum Status {
 }
 
 enum ListingStatus {
+  DRAFT
   ACTIVE
   DEACTIVATED
 }
@@ -108,6 +118,11 @@ enum CompanyDocumentType {
   OWNER_ID
 }
 
+enum ListingMediaType {
+  IMAGE
+  VIDEO
+}
+
 enum AuditEntityType {
   USER
   COMPANY
@@ -132,8 +147,6 @@ enum Provider {
   APPLE
 }
 
-// companyId String?
-// company   Company? @relation(fields: [companyId], references: [id])
 // USER
 
 model User {
@@ -144,9 +157,9 @@ model User {
 
   googleId String? @unique
 
-  phone    String?
-  bio      String?
-  image    String?
+  phone String?
+  bio   String?
+  image String?
 
   address String?
   city    String?
@@ -167,22 +180,22 @@ model User {
   sentMessages     Message[] @relation("MessageSender")
   receivedMessages Message[] @relation("MessageReceiver")
 
-  status        Status  @default(ACTIVE)
-  emailVerified Boolean @default(false)
-  emailVerifiedAt DateTime?
-  emailVerificationToken String?
+  status                     Status    @default(ACTIVE)
+  emailVerified              Boolean   @default(false)
+  emailVerifiedAt            DateTime?
+  emailVerificationToken     String?
   emailVerificationExpiresAt DateTime?
 
-  passwordResetToken String?
+  passwordResetToken     String?
   passwordResetExpiresAt DateTime?
-  passwordChangedAt DateTime?
+  passwordChangedAt      DateTime?
 
   lastLoginAt DateTime?
-  provider Provider @default(LOCAL)
+  provider    Provider  @default(LOCAL)
 
   adminAuditLogs AdminAuditLog[] @relation("AdminRelation")
 
-  agentApplications   AgentApplication[]
+  agentApplications  AgentApplication[]
   companyApplication CompanyApplication[]
 
   agentApplicationReviews   AgentApplicationReview[]
@@ -190,7 +203,7 @@ model User {
 
   agentApplicationHistoriesPerformed   AgentApplicationHistory[]
   companyApplicationHistoriesPerformed CompanyApplicationHistory[]
-  listingApplicationHistoriesPerformed ListingApplicationHistory[]
+  performedBy ListingHistory[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -213,14 +226,12 @@ model Agent {
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id])
 
-  listings Listing[]
-
   avgRating    Float @default(0)
   totalReviews Int   @default(0)
 
-  status       Status               @default(ACTIVE)
-  isVerified     Boolean              @default(false)
-  listingApplications ListingApplication[]
+  status              Status               @default(ACTIVE)
+  isVerified          Boolean              @default(false)
+  listings Listing[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -247,9 +258,7 @@ model Company {
 
   status Status @default(ACTIVE)
 
-  invites      Invite[]
-  // targetCompanyLogs   AdminAuditLog[]      @relation("TargetCompany")
-  listingApplications ListingApplication[]
+  invites             Invite[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -287,6 +296,12 @@ model CompanyMember {
 
 model Listing {
   id          String  @id @default(uuid())
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
   title       String
   description String?
   slug        String  @unique
@@ -296,7 +311,7 @@ model Listing {
 
   type        PropertyType
   listingType ListingType
-  condition PropertyCondition?
+  condition   PropertyCondition?
 
   bedrooms      Int?
   bathrooms     Int?
@@ -310,13 +325,8 @@ model Listing {
 
   furnishing String?
 
-  agentId String
-  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
 
-  companyId String?
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  images    Media[]
+  media     Media[]
   reviews   Review[]
   bookmarks Bookmark[]
 
@@ -327,9 +337,11 @@ model Listing {
   lat     Float?
   lng     Float?
 
-  listingApplications ListingApplication[]
+  status ListingStatus @default(DRAFT)
+  version     Int?              @default(1)
 
-  status ListingStatus @default(ACTIVE)
+  history ListingHistory[]
+  uploadedAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -342,11 +354,32 @@ model Listing {
   @@index([lat, lng])
 }
 
+
+model ListingHistory {
+  id String @id @default(uuid())
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  action ListingAction
+
+  performedById String?
+  performedBy   User?   @relation(fields: [performedById], references: [id], onDelete: SetNull)
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([listingId])
+  @@index([performedById])
+}
 // MEDIA
 
 model Media {
-  id        String @id @default(uuid())
+  id        String           @id @default(uuid())
+  type      ListingMediaType
   url       String
+  publicId String
   listingId String
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
@@ -405,7 +438,7 @@ model Message {
   receiverId String
 
   content String
-  isRead    Boolean @default(false)
+  isRead  Boolean @default(false)
 
   sender   User @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
@@ -424,7 +457,7 @@ model AgentApplication {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   status      ApplicationStatus @default(DRAFT)
-  currentStep Int?         @default(0)
+  currentStep Int?              @default(0)
   version     Int               @default(1)
 
   submittedAt DateTime?
@@ -434,7 +467,7 @@ model AgentApplication {
 
   professional AgentProfessional?
   documents    AgentDocument[]
-  reviews AgentApplicationReview[]
+  reviews      AgentApplicationReview[]
   verification AgentApplicationVerification?
 
   history    AgentApplicationHistory[]
@@ -466,13 +499,13 @@ model AgentDocument {
   agentApplicationId String
   agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
 
-  type AgentDocumentType // ID_CARD, LICENSE, SELFIE
-  url  String
+  type     AgentDocumentType // ID_CARD, LICENSE, SELFIE
+  url      String
   publicId String
 
   isVerified Boolean @default(false)
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([agentApplicationId, type])
 }
@@ -502,10 +535,10 @@ model AgentApplicationVerification {
   agentApplicationId String           @unique
   agentApplication   AgentApplication @relation(fields: [agentApplicationId], references: [id], onDelete: Cascade)
 
-  ipHash    String?
-  userAgent String?
-  riskScore Float?
-  isVerified  Boolean @default(false)
+  ipHash     String?
+  userAgent  String?
+  riskScore  Float?
+  isVerified Boolean @default(false)
 
   createdAt DateTime @default(now())
 }
@@ -633,98 +666,15 @@ model CompanyDocument {
   companyApplicationId String
   companyApplication   CompanyApplication @relation(fields: [companyApplicationId], references: [id], onDelete: Cascade)
 
-  type CompanyDocumentType // CERTIFICATE, LICENSE, OWNER_ID
-  url  String
+  type     CompanyDocumentType // CERTIFICATE, LICENSE, OWNER_ID
+  url      String
   publicId String
 
   isVerified Boolean @default(false)
 
-  @@index([companyApplicationId, type])
+  @@unique([companyApplicationId, type])
 }
 
-// LISTING APPLICATION
-
-model ListingApplication {
-  id String @id @default(uuid())
-
-  agentId String
-  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  companyId String?
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-
-  listingId String?
-  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: Cascade)
-
-  title       String?
-  description String?
-  price       Float?
-  currency    String  @default("USD")
-
-  type        PropertyType?
-  listingType ListingType?
-  condition   PropertyCondition?
-
-  bedrooms      Int?
-  bathrooms     Int?
-  parkingSpaces Int?
-
-  areaSize Float?
-  areaUnit String? @default("sqm")
-
-  lotSize   Float?
-  yearBuilt Int?
-
-  furnishing String?
-
-  address String?
-  city    String?
-  state   String?
-  country String?
-  lat     Float?
-  lng     Float?
-
-  status      ApplicationStatus @default(DRAFT)
-  currentStep Int?              @default(1)
-  version     Int?              @default(1)
-
-  submittedAt DateTime?
-  expiresAt   DateTime?
-
-  history ListingApplicationHistory[]
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  @@index([deletedAt])
-  @@index([agentId])
-  @@index([companyId])
-  @@index([listingId])
-  @@index([status])
-  @@index([createdAt])
-  @@index([city, country, price])
-  @@index([lat, lng])
-}
-
-model ListingApplicationHistory {
-  id String @id @default(uuid())
-
-  listingApplicationId String
-  listingApplication   ListingApplication @relation(fields: [listingApplicationId], references: [id], onDelete: Cascade)
-
-  action ApplicationAction
-
-  performedById String?
-  performedBy   User?   @relation(fields: [performedById], references: [id], onDelete: SetNull)
-
-  note String?
-
-  createdAt DateTime @default(now())
-
-  @@index([listingApplicationId])
-  @@index([performedById])
-}
 
 // INVITE
 
@@ -767,8 +717,8 @@ model AdminAuditLog {
   notes           String?
   ipHash          String?
   userAgent       String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([adminId])
   @@index([entityType, entityId])

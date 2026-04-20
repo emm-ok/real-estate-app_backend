@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import crypto from "crypto";
 import { stepSchemas } from "../../lib/validation.js";
 import { generateIp } from "../../utils/checkCompletion.js";
+import cloudinary from "../../config/cloudinary.js";
 
 export const createAgentApplication = async (req, res) => {
   try {
@@ -254,6 +255,14 @@ export const deleteAgentDocument = async (req, res) => {
       });
     }
 
+    const result = await cloudinary.uploader.destroy(existing.publicId, {
+      resource_type: "raw",
+    });
+
+    if (result !== "ok" || result !== "not found") {
+      throw new Error("Cloudinary deletion failed");
+    }
+
     await prisma.agentDocument.delete({
       where: {
         agentApplicationId_type: {
@@ -472,8 +481,20 @@ export const verifyApplicationDocument = async (req, res) => {
         message: "Document Id is required",
       });
     }
-    const document = await prisma.agentDocument.update({
-      where: { id: docId },
+
+    const document = await prisma.agentDocument.findUnique({
+      where: {
+        id: docId,
+      },
+    });
+
+    if (!document) {
+      return res.status(404).json({
+        message: "Document not found",
+      });
+    }
+    await prisma.agentDocument.update({
+      where: { id: document.id },
       data: { isVerified: true },
     });
 
@@ -528,9 +549,14 @@ export const approveAgentApplication = async (req, res) => {
       where: { id: applicationId },
       include: {
         professional: true,
-      }
+      },
     });
 
+    if (!application) {
+      return res.status(404).json({
+        message: "Application not found",
+      });
+    }
     // TODO: check if user email is verifed before apporval
     if (!application.professional) {
       return res.status(400).json({
@@ -558,7 +584,9 @@ export const approveAgentApplication = async (req, res) => {
 
     const unVerifiedDocs = documents.filter((doc) => !doc.isVerified);
     const responseMessage =
-      unVerifiedDocs.length > 0 ? unVerifiedDocs.map((doc) => doc.type).join(", ") : unVerifiedDocs[0]?.type;
+      unVerifiedDocs.length > 0
+        ? unVerifiedDocs.map((doc) => doc.type).join(", ")
+        : unVerifiedDocs[0]?.type;
 
     if (unVerifiedDocs.length > 0) {
       return res.status(400).json({
@@ -624,6 +652,13 @@ export const rejectAgentApplication = async (req, res) => {
     const application = await prisma.agentApplication.findUnique({
       where: { id: applicationId },
     });
+
+    if (!application) {
+      return res.status(404).json({
+        message: "Application not found",
+      });
+    }
+
     const ip = generateIp(req);
 
     const updated = await prisma.$transaction(async (tx) => {

@@ -1,6 +1,12 @@
+import cloudinary from "../../config/cloudinary.js";
 import { prisma } from "../../lib/prisma.js";
 import { companyStepSchemas } from "../../lib/validation.js";
-import { generateIp } from "../../utils/checkCompletion.js";
+import {
+  checkIfComplete,
+  checkUploadComplete,
+  generateIp,
+} from "../../utils/checkCompletion.js";
+import crypto from "crypto";
 
 export const createCompanyApplication = async (req, res) => {
   try {
@@ -126,22 +132,10 @@ export const updateCompanyApplication = async (req, res) => {
     }
 
     if (step === 2) {
-      const documents = await prisma.companyDocument.findMany({
-        where: { companyApplicationId: application.id },
-      });
-
-      const requiredDocs = ["CERTIFICATE", "LICENSE", "OWNER_ID"];
-
-      const uploadedTypes = documents.map((doc) => doc.type);
-
-      const missingDocs = requiredDocs.filter(
-        (doc) => !uploadedTypes.includes(doc),
-      );
-
-      if (missingDocs.length > 0) {
+      const isComplete = await checkUploadComplete(application, res);
+      if (!isComplete) {
         return res.status(400).json({
-          message: "Missing required documents",
-          missingDocs,
+          message: "Please upload all required documents before submission",
         });
       }
     }
@@ -211,6 +205,13 @@ export const uploadCompanyDocument = async (req, res) => {
       },
     });
 
+    await prisma.companyApplication.update({
+      where: { id: application.id },
+      data: {
+        currentStep: Math.max(application.currentStep, 2), // Ensure user can't skip to step 3 without uploading document
+      },
+    });
+
     await prisma.companyApplicationHistory.create({
       data: {
         companyApplicationId: application.id,
@@ -251,6 +252,13 @@ export const deleteCompanyDocument = async (req, res) => {
       return res.status(404).json({
         message: "Document not found",
       });
+    }
+    const result = await cloudinary.uploader.destroy(existing.publicId, {
+      resource_type: "raw",
+    });
+
+    if (result !== "ok" || result !== "not found") {
+      throw new Error("Cloudinary deletion failed");
     }
 
     await prisma.companyDocument.delete({
@@ -315,6 +323,7 @@ export const submitCompanyApplication = async (req, res) => {
   try {
     const { application } = req;
 
+    console.log("Application Point", application);
     // const user = await prisma.user.findUnique({
     //   where: { id: application.userId },
     // });
@@ -343,24 +352,13 @@ export const submitCompanyApplication = async (req, res) => {
       });
     }
 
-    const documents = await prisma.companyDocument.findMany({
-      where: { companyApplicationId: application.id },
-    });
-
-    const requiredDocs = ["CERTIFICATE", "LICENSE", "OWNER_ID"];
-
-    const uploadedTypes = documents.map((doc) => doc.type);
-
-    const missingDocs = requiredDocs.filter(
-      (doc) => !uploadedTypes.includes(doc),
-    );
-
-    if (missingDocs.length > 0) {
+    const isComplete = await checkUploadComplete(application, res);
+    if (!isComplete) {
       return res.status(400).json({
-        message: "Missing required documents",
-        missingDocs,
+        message: "Please upload all required documents before submission",
       });
     }
+    console.log("All documents uploaded, ready for submission");
 
     const updated = await prisma.companyApplication.update({
       where: { id: application.id },
@@ -378,7 +376,7 @@ export const submitCompanyApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Application submittd successfully",
+      message: "Application submitted successfully",
     });
   } catch (error) {
     console.error(error.message);
@@ -387,6 +385,8 @@ export const submitCompanyApplication = async (req, res) => {
     });
   }
 };
+
+// Admin Actions
 
 export const getCompanyApplications = async (req, res) => {
   try {
@@ -525,14 +525,14 @@ export const approveCompanyApplication = async (req, res) => {
     const application = await prisma.companyApplication.findUnique({
       where: { id: applicationId },
       include: {
-        professional: true,
-      }
+        companyInfo: true,
+      },
     });
 
     // TODO: check if user email is verifed before apporval
-    if (!application.professional) {
+    if (!application.companyInfo) {
       return res.status(400).json({
-        message: "All Professional fields are required",
+        message: "All Company fields are required",
       });
     }
 
@@ -556,7 +556,9 @@ export const approveCompanyApplication = async (req, res) => {
 
     const unVerifiedDocs = documents.filter((doc) => !doc.isVerified);
     const responseMessage =
-      unVerifiedDocs.length > 0 ? unVerifiedDocs.map((doc) => doc.type).join(", ") : unVerifiedDocs[0]?.type;
+      unVerifiedDocs.length > 0
+        ? unVerifiedDocs.map((doc) => doc.type).join(", ")
+        : unVerifiedDocs[0]?.type;
 
     if (unVerifiedDocs.length > 0) {
       return res.status(400).json({
@@ -565,37 +567,46 @@ export const approveCompanyApplication = async (req, res) => {
     }
     const ip = generateIp(req);
 
-    const updated = await prisma.$transaction(async (tx) => {
-      (await tx.companyApplication.update({
-        where: { id: application.id },
-        data: {
-          status: "APPROVED",
-          approvedAt: new Date(),
-        },
-      }),
-        await tx.company.create({
-          data: {
-            ownerId: application.userId,
-            members: {
-                create: {
-                    userId: application.userId,
-                    role: "ADMIN",
-                }
-            }
-          },
-        }));
-      await tx.adminAuditLog.create({
-        data: {
-          adminId: req.user.id,
-          entityId: applicationId,
-          entityType: "COMPANY_APPLICATION",
-          targetUserId: application.userId,
-          action: "APPROVE",
-          notes: `Approved user ${application.userId}`,
-          ipHash: crypto.createHash("sha256").update(ip).digest("hex") || "",
-          userAgent: req.headers["user-agent"],
-        },
-      });
+    const updated = await prisma.companyApplication.update({
+      where: { id: application.id },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+      },
+      include: {
+        companyInfo: true,
+      },
+    });
+
+    const company = await prisma.company.create({
+      data: {
+        ownerId: application.userId,
+        name: application.companyInfo.name,
+        email: application.companyInfo.email,
+        logo: application.companyInfo.logo,
+        website: application.companyInfo.website,
+      },
+    });
+    await prisma.companyMember.create({
+      data: {
+        userId: application.userId,
+        companyId: company.id,
+        role: "ADMIN",
+      },
+    });
+
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: req.user.id,
+        entityId: applicationId,
+        entityType: "COMPANY_APPLICATION",
+        targetUserId: application.userId,
+        targetCompanyId: company.id,
+        action: "APPROVE",
+        notes: `Approved company ${company.id}`,
+        ipHash: crypto.createHash("sha256").update(ip).digest("hex") || "",
+        userAgent: req.headers["user-agent"],
+      },
     });
 
     return res.status(200).json({
@@ -659,7 +670,7 @@ export const rejectCompanyApplication = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: `Application rejectedq successfully`,
+      message: `Application rejected successfully`,
       updated,
     });
   } catch (error) {

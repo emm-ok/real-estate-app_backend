@@ -1,7 +1,27 @@
 import express from "express";
 import { validateAuth } from "../../middlewares/auth.middleware.js";
-import { requireAdmin } from "../../middlewares/admin.middleware.js";
-import { validateCompanyApplicationUpdate, validateCompanyDocumentType, validateUser } from "../../middlewares/agentApplication.middleware.js";
+import { requireAdmin, requireUser } from "../../middlewares/role.middleware.js";
+import {
+  isEmailVerified,
+  validateCompanyApplicationUpdate,
+  validateCompanyDocumentType,
+  validateUser,
+} from "../../middlewares/agentApplication.middleware.js";
+import {
+  approveCompanyApplication,
+  createCompanyApplication,
+  deleteCompanyApplication,
+  deleteCompanyDocument,
+  getCompanyApplicationById,
+  getCompanyApplications,
+  getMyCompanyApplication,
+  rejectCompanyApplication,
+  submitCompanyApplication,
+  updateCompanyApplication,
+  uploadCompanyDocument,
+  verifyApplicationDocument,
+} from "./company-application.controller.js";
+import { upload } from "../../middlewares/upload.middleware.js";
 
 const router = express.Router();
 
@@ -11,10 +31,15 @@ router.use(validateUser); // middleware (check req.user exist or status is ACTIV
 router.get("/all-applications", requireAdmin, getCompanyApplications);
 router.get("/:applicationId", requireAdmin, getCompanyApplicationById);
 router.patch("/doc/:docId", requireAdmin, verifyApplicationDocument);
-router.patch("/:applicationId/approve", requireAdmin, approveCompanyApplication);
+router.patch(
+  "/:applicationId/approve",
+  requireAdmin,
+  approveCompanyApplication,
+);
 router.patch("/:applicationId/reject", requireAdmin, rejectCompanyApplication);
 
-
+// router.use(requireUser); //middleware -  Ensure only user role
+// router.use(isEmailVerified); // middleware (check email verified)
 router.post("/", createCompanyApplication);
 router.get("/", getMyCompanyApplication);
 
@@ -28,10 +53,10 @@ router.post(
     next();
   },
   upload.single("file"), // middleware - handles file upload using multer to parse file
-  uploadCompanyDocument
+  uploadCompanyDocument,
 );
 router.delete("/doc/:type", deleteCompanyDocument);
 router.delete("/delete", deleteCompanyApplication);
-router.post("/submit", submitCompanyApplication)
+router.post("/submit", submitCompanyApplication);
 
 export default router;

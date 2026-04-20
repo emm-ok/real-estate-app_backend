@@ -17,6 +17,16 @@ export const validateUser = async(req, res, next) => {
     next()
 }
 
+export const isEmailVerified = async (req, res, next) => {
+  if(!req.user.emailVerified){
+    return res.status(403).json({
+      success: false,
+      message: "Email not verified",
+    });
+  }
+  next()
+}
+
 export const validateApplicationUpdate = async (req, res, next) => {
   try {
     const application = await prisma.agentApplication.findFirst({
@@ -100,4 +110,24 @@ export const validateCompanyDocumentType = async(req, res, next) => {
     next();
 }
 
+export const validateListing = async(req, res, next) => {
+  const { listingId } = req.params;
+  
+  const listing = await prisma.listing.findFirst({
+    where: { id: listingId, agentId: req.user.id },
+    include: {
+      media: true,
+      history: true,
+    }
+  })
 
+  if(!listing){
+    return res.status(404).json({
+      message: "Listing not found",
+    })
+  }
+
+  req.listing = listing;
+
+  next()
+}
