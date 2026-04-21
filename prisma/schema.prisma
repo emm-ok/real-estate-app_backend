@@ -160,7 +160,7 @@ model User {
 
   phone String?
   bio   String?
-  image String?
+  image UserImage[]
 
   address String?
   city    String?
@@ -217,6 +217,21 @@ model User {
   @@index([deletedAt])
 }
 
+model UserImage {
+  id        String           @id @default(uuid())
+  url       String
+  publicId String
+  userId String
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([userId])
+}
+
 // AGENT
 
 model Agent {
@@ -247,7 +262,7 @@ model Company {
   id      String  @id @default(uuid())
   name    String  @unique
   email   String
-  logo    String?
+  logo    CompanyLogo[]
   website String?
 
   ownerId String
@@ -269,7 +284,7 @@ model Company {
   @@index([deletedAt])
 }
 
-// COMPANY MEMBER (JOIN TABLE)
+// COMPANY MEMBER 
 
 model CompanyMember {
   id String @id @default(uuid())
@@ -293,6 +308,20 @@ model CompanyMember {
   @@index([companyId])
 }
 
+model CompanyLogo {
+  id        String           @id @default(uuid())
+  url       String
+  publicId String
+  companyId String
+
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([companyId])
+}
 // LISTING
 
 model Listing {

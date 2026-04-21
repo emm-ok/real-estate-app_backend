@@ -2,7 +2,7 @@
 CREATE TYPE "Role" AS ENUM ('USER', 'AGENT', 'ADMIN');
 
 -- CreateEnum
-CREATE TYPE "CompanyRole" AS ENUM ('OWNER', 'ADMIN', 'MEMBER');
+CREATE TYPE "CompanyRole" AS ENUM ('ADMIN', 'MEMBER');
 
 -- CreateEnum
 CREATE TYPE "ListingType" AS ENUM ('FOR_SALE', 'FOR_RENT');
@@ -14,6 +14,12 @@ CREATE TYPE "PropertyType" AS ENUM ('APARTMENT', 'LAND', 'COMMERCIAL', 'HOUSE', 
 CREATE TYPE "PropertyCondition" AS ENUM ('NEW', 'GOOD', 'RENOVATION');
 
 -- CreateEnum
+CREATE TYPE "ApplicationAction" AS ENUM ('CREATED', 'SUBMITTED', 'APPROVED', 'REJECTED', 'UPDATED', 'DOCUMENT_UPLOADED', 'DOCUMENT_DELETED', 'DELETE_APPLICATION', 'DOCUMENT_VERIFIED');
+
+-- CreateEnum
+CREATE TYPE "ListingAction" AS ENUM ('DRAFTED', 'UPDATED', 'SUBMITTED', 'UPLOADED_MEDIA', 'DELETED_MEDIA', 'ARCHIVED');
+
+-- CreateEnum
 CREATE TYPE "ApplicationStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED');
 
 -- CreateEnum
@@ -23,7 +29,7 @@ CREATE TYPE "InviteStatus" AS ENUM ('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED')
 CREATE TYPE "Status" AS ENUM ('ACTIVE', 'SUSPENDED', 'DEACTIVATED');
 
 -- CreateEnum
-CREATE TYPE "ListingStatus" AS ENUM ('ACTIVE', 'DEACTIVATED');
+CREATE TYPE "ListingStatus" AS ENUM ('DRAFT', 'ACTIVE', 'DEACTIVATED');
 
 -- CreateEnum
 CREATE TYPE "ReviewDecision" AS ENUM ('APPROVED', 'REJECTED');
@@ -32,13 +38,22 @@ CREATE TYPE "ReviewDecision" AS ENUM ('APPROVED', 'REJECTED');
 CREATE TYPE "AgentDocumentType" AS ENUM ('ID_CARD', 'LICENSE', 'SELFIE');
 
 -- CreateEnum
+CREATE TYPE "AgentSpecialization" AS ENUM ('RESIDENTIAL', 'COMMERCIAL', 'LUXURY', 'STUDENT', 'SHORTLET', 'LAND');
+
+-- CreateEnum
 CREATE TYPE "CompanyDocumentType" AS ENUM ('CERTIFICATE', 'LICENSE', 'OWNER_ID');
 
 -- CreateEnum
-CREATE TYPE "AuditEntityType" AS ENUM ('USER', 'COMPANY', 'LISTING', 'AGENT_APPLICATION', 'COMPANY_APPLICATION', 'LISTING_APPLICATION');
+CREATE TYPE "ListingMediaType" AS ENUM ('IMAGE', 'VIDEO');
 
 -- CreateEnum
-CREATE TYPE "AuditAction" AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT');
+CREATE TYPE "AuditEntityType" AS ENUM ('USER', 'AGENT', 'COMPANY', 'LISTING', 'AGENT_APPLICATION', 'COMPANY_APPLICATION', 'LISTING_APPLICATION');
+
+-- CreateEnum
+CREATE TYPE "AuditAction" AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'APPROVE', 'REJECT', 'VERIFY_DOCUMENT');
+
+-- CreateEnum
+CREATE TYPE "Provider" AS ENUM ('LOCAL', 'GOOGLE', 'APPLE');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -46,9 +61,9 @@ CREATE TABLE "User" (
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT,
+    "googleId" TEXT,
     "phone" TEXT,
     "bio" TEXT,
-    "image" TEXT,
     "address" TEXT,
     "city" TEXT,
     "state" TEXT,
@@ -58,11 +73,32 @@ CREATE TABLE "User" (
     "role" "Role" NOT NULL DEFAULT 'USER',
     "status" "Status" NOT NULL DEFAULT 'ACTIVE',
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "emailVerifiedAt" TIMESTAMP(3),
+    "emailVerificationToken" TEXT,
+    "emailVerificationExpiresAt" TIMESTAMP(3),
+    "passwordResetToken" TEXT,
+    "passwordResetExpiresAt" TIMESTAMP(3),
+    "passwordChangedAt" TIMESTAMP(3),
+    "lastLoginAt" TIMESTAMP(3),
+    "provider" "Provider" NOT NULL DEFAULT 'LOCAL',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "UserImage" (
+    "id" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
+
+    CONSTRAINT "UserImage_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -73,7 +109,7 @@ CREATE TABLE "Agent" (
     "avgRating" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "totalReviews" INTEGER NOT NULL DEFAULT 0,
     "status" "Status" NOT NULL DEFAULT 'ACTIVE',
-    "verified" BOOLEAN NOT NULL DEFAULT false,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -85,7 +121,6 @@ CREATE TABLE "Company" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "email" TEXT NOT NULL,
-    "logo" TEXT,
     "website" TEXT,
     "ownerId" TEXT NOT NULL,
     "status" "Status" NOT NULL DEFAULT 'ACTIVE',
@@ -109,8 +144,23 @@ CREATE TABLE "CompanyMember" (
 );
 
 -- CreateTable
+CREATE TABLE "CompanyLogo" (
+    "id" TEXT NOT NULL,
+    "url" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "companyId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3),
+
+    CONSTRAINT "CompanyLogo_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Listing" (
     "id" TEXT NOT NULL,
+    "agentId" TEXT NOT NULL,
+    "companyId" TEXT,
     "title" TEXT NOT NULL,
     "description" TEXT,
     "slug" TEXT NOT NULL,
@@ -127,15 +177,15 @@ CREATE TABLE "Listing" (
     "lotSize" DOUBLE PRECISION,
     "yearBuilt" INTEGER,
     "furnishing" TEXT,
-    "agentId" TEXT NOT NULL,
-    "companyId" TEXT,
     "address" TEXT,
     "city" TEXT,
     "state" TEXT,
     "country" TEXT,
     "lat" DOUBLE PRECISION,
     "lng" DOUBLE PRECISION,
-    "status" "ListingStatus" NOT NULL DEFAULT 'ACTIVE',
+    "status" "ListingStatus" NOT NULL DEFAULT 'DRAFT',
+    "version" INTEGER DEFAULT 1,
+    "uploadedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "deletedAt" TIMESTAMP(3),
@@ -144,9 +194,23 @@ CREATE TABLE "Listing" (
 );
 
 -- CreateTable
+CREATE TABLE "ListingHistory" (
+    "id" TEXT NOT NULL,
+    "listingId" TEXT NOT NULL,
+    "action" "ListingAction" NOT NULL,
+    "performedById" TEXT,
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ListingHistory_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Media" (
     "id" TEXT NOT NULL,
+    "type" "ListingMediaType" NOT NULL,
     "url" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
     "listingId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -186,7 +250,7 @@ CREATE TABLE "Message" (
     "senderId" TEXT NOT NULL,
     "receiverId" TEXT NOT NULL,
     "content" TEXT NOT NULL,
-    "read" BOOLEAN NOT NULL DEFAULT false,
+    "isRead" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -198,7 +262,7 @@ CREATE TABLE "AgentApplication" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "status" "ApplicationStatus" NOT NULL DEFAULT 'DRAFT',
-    "currentStep" INTEGER,
+    "currentStep" INTEGER DEFAULT 0,
     "version" INTEGER NOT NULL DEFAULT 1,
     "submittedAt" TIMESTAMP(3),
     "reviewedAt" TIMESTAMP(3),
@@ -217,7 +281,7 @@ CREATE TABLE "AgentProfessional" (
     "agentApplicationId" TEXT NOT NULL,
     "licenseNumber" TEXT NOT NULL,
     "licenseCountry" TEXT NOT NULL,
-    "specialization" TEXT NOT NULL,
+    "specialization" "AgentSpecialization" NOT NULL,
     "yearsExperience" INTEGER NOT NULL,
     "companyName" TEXT,
     "website" TEXT,
@@ -231,6 +295,9 @@ CREATE TABLE "AgentDocument" (
     "agentApplicationId" TEXT NOT NULL,
     "type" "AgentDocumentType" NOT NULL,
     "url" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "AgentDocument_pkey" PRIMARY KEY ("id")
 );
@@ -255,7 +322,7 @@ CREATE TABLE "AgentApplicationVerification" (
     "ipHash" TEXT,
     "userAgent" TEXT,
     "riskScore" DOUBLE PRECISION,
-    "verified" BOOLEAN NOT NULL DEFAULT false,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "AgentApplicationVerification_pkey" PRIMARY KEY ("id")
@@ -265,7 +332,7 @@ CREATE TABLE "AgentApplicationVerification" (
 CREATE TABLE "AgentApplicationHistory" (
     "id" TEXT NOT NULL,
     "agentApplicationId" TEXT NOT NULL,
-    "action" TEXT NOT NULL,
+    "action" "ApplicationAction" NOT NULL,
     "performedById" TEXT,
     "note" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -278,7 +345,7 @@ CREATE TABLE "CompanyApplication" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "status" "ApplicationStatus" NOT NULL DEFAULT 'DRAFT',
-    "currentStep" INTEGER DEFAULT 1,
+    "currentStep" INTEGER DEFAULT 0,
     "version" INTEGER NOT NULL DEFAULT 1,
     "submittedAt" TIMESTAMP(3),
     "reviewedAt" TIMESTAMP(3),
@@ -295,7 +362,7 @@ CREATE TABLE "CompanyApplication" (
 CREATE TABLE "CompanyApplicationHistory" (
     "id" TEXT NOT NULL,
     "companyApplicationId" TEXT NOT NULL,
-    "action" TEXT NOT NULL,
+    "action" "ApplicationAction" NOT NULL,
     "performedById" TEXT,
     "note" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -350,59 +417,10 @@ CREATE TABLE "CompanyDocument" (
     "companyApplicationId" TEXT NOT NULL,
     "type" "CompanyDocumentType" NOT NULL,
     "url" TEXT NOT NULL,
+    "publicId" TEXT NOT NULL,
+    "isVerified" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "CompanyDocument_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "ListingApplication" (
-    "id" TEXT NOT NULL,
-    "agentId" TEXT NOT NULL,
-    "companyId" TEXT,
-    "listingId" TEXT,
-    "title" TEXT,
-    "description" TEXT,
-    "price" DOUBLE PRECISION,
-    "currency" TEXT NOT NULL DEFAULT 'USD',
-    "type" "PropertyType",
-    "listingType" "ListingType",
-    "condition" "PropertyCondition",
-    "bedrooms" INTEGER,
-    "bathrooms" INTEGER,
-    "parkingSpaces" INTEGER,
-    "areaSize" DOUBLE PRECISION,
-    "areaUnit" TEXT DEFAULT 'sqm',
-    "lotSize" DOUBLE PRECISION,
-    "yearBuilt" INTEGER,
-    "furnishing" TEXT,
-    "address" TEXT,
-    "city" TEXT,
-    "state" TEXT,
-    "country" TEXT,
-    "lat" DOUBLE PRECISION,
-    "lng" DOUBLE PRECISION,
-    "status" "ApplicationStatus" NOT NULL DEFAULT 'DRAFT',
-    "currentStep" INTEGER DEFAULT 1,
-    "version" INTEGER DEFAULT 1,
-    "submittedAt" TIMESTAMP(3),
-    "expiresAt" TIMESTAMP(3),
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "deletedAt" TIMESTAMP(3),
-
-    CONSTRAINT "ListingApplication_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "ListingApplicationHistory" (
-    "id" TEXT NOT NULL,
-    "listingApplicationId" TEXT NOT NULL,
-    "action" TEXT NOT NULL,
-    "performedById" TEXT,
-    "note" TEXT,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "ListingApplicationHistory_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -445,7 +463,25 @@ CREATE TABLE "AdminAuditLog" (
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "User_googleId_key" ON "User"("googleId");
+
+-- CreateIndex
+CREATE INDEX "User_email_idx" ON "User"("email");
+
+-- CreateIndex
+CREATE INDEX "User_status_idx" ON "User"("status");
+
+-- CreateIndex
+CREATE INDEX "User_role_idx" ON "User"("role");
+
+-- CreateIndex
+CREATE INDEX "User_createdAt_idx" ON "User"("createdAt");
+
+-- CreateIndex
 CREATE INDEX "User_deletedAt_idx" ON "User"("deletedAt");
+
+-- CreateIndex
+CREATE INDEX "UserImage_userId_idx" ON "UserImage"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Agent_userId_key" ON "Agent"("userId");
@@ -475,6 +511,9 @@ CREATE INDEX "CompanyMember_companyId_idx" ON "CompanyMember"("companyId");
 CREATE UNIQUE INDEX "CompanyMember_userId_companyId_key" ON "CompanyMember"("userId", "companyId");
 
 -- CreateIndex
+CREATE INDEX "CompanyLogo_companyId_idx" ON "CompanyLogo"("companyId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Listing_slug_key" ON "Listing"("slug");
 
 -- CreateIndex
@@ -493,22 +532,16 @@ CREATE INDEX "Listing_city_country_price_idx" ON "Listing"("city", "country", "p
 CREATE INDEX "Listing_lat_lng_idx" ON "Listing"("lat", "lng");
 
 -- CreateIndex
+CREATE INDEX "ListingHistory_listingId_idx" ON "ListingHistory"("listingId");
+
+-- CreateIndex
+CREATE INDEX "ListingHistory_performedById_idx" ON "ListingHistory"("performedById");
+
+-- CreateIndex
 CREATE INDEX "Media_listingId_idx" ON "Media"("listingId");
 
 -- CreateIndex
-CREATE INDEX "Bookmark_userId_idx" ON "Bookmark"("userId");
-
--- CreateIndex
-CREATE INDEX "Bookmark_listingId_idx" ON "Bookmark"("listingId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "Bookmark_userId_listingId_key" ON "Bookmark"("userId", "listingId");
-
--- CreateIndex
-CREATE INDEX "Review_userId_idx" ON "Review"("userId");
-
--- CreateIndex
-CREATE INDEX "Review_listingId_idx" ON "Review"("listingId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Review_userId_listingId_key" ON "Review"("userId", "listingId");
@@ -517,13 +550,13 @@ CREATE UNIQUE INDEX "Review_userId_listingId_key" ON "Review"("userId", "listing
 CREATE INDEX "Message_senderId_receiverId_idx" ON "Message"("senderId", "receiverId");
 
 -- CreateIndex
-CREATE INDEX "AgentApplication_userId_idx" ON "AgentApplication"("userId");
+CREATE INDEX "AgentApplication_userId_status_idx" ON "AgentApplication"("userId", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "AgentProfessional_agentApplicationId_key" ON "AgentProfessional"("agentApplicationId");
 
 -- CreateIndex
-CREATE INDEX "AgentDocument_agentApplicationId_idx" ON "AgentDocument"("agentApplicationId");
+CREATE UNIQUE INDEX "AgentDocument_agentApplicationId_type_key" ON "AgentDocument"("agentApplicationId", "type");
 
 -- CreateIndex
 CREATE INDEX "AgentApplicationReview_agentApplicationId_idx" ON "AgentApplicationReview"("agentApplicationId");
@@ -562,37 +595,7 @@ CREATE UNIQUE INDEX "CompanyApplicationVerification_companyApplicationId_key" ON
 CREATE UNIQUE INDEX "CompanyInfo_companyApplicationId_key" ON "CompanyInfo"("companyApplicationId");
 
 -- CreateIndex
-CREATE INDEX "CompanyDocument_companyApplicationId_idx" ON "CompanyDocument"("companyApplicationId");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_deletedAt_idx" ON "ListingApplication"("deletedAt");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_agentId_idx" ON "ListingApplication"("agentId");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_companyId_idx" ON "ListingApplication"("companyId");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_listingId_idx" ON "ListingApplication"("listingId");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_status_idx" ON "ListingApplication"("status");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_createdAt_idx" ON "ListingApplication"("createdAt");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_city_country_price_idx" ON "ListingApplication"("city", "country", "price");
-
--- CreateIndex
-CREATE INDEX "ListingApplication_lat_lng_idx" ON "ListingApplication"("lat", "lng");
-
--- CreateIndex
-CREATE INDEX "ListingApplicationHistory_listingApplicationId_idx" ON "ListingApplicationHistory"("listingApplicationId");
-
--- CreateIndex
-CREATE INDEX "ListingApplicationHistory_performedById_idx" ON "ListingApplicationHistory"("performedById");
+CREATE UNIQUE INDEX "CompanyDocument_companyApplicationId_type_key" ON "CompanyDocument"("companyApplicationId", "type");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Invite_token_key" ON "Invite"("token");
@@ -625,6 +628,9 @@ CREATE INDEX "AdminAuditLog_targetCompanyId_idx" ON "AdminAuditLog"("targetCompa
 CREATE INDEX "AdminAuditLog_createdAt_idx" ON "AdminAuditLog"("createdAt");
 
 -- AddForeignKey
+ALTER TABLE "UserImage" ADD CONSTRAINT "UserImage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Agent" ADD CONSTRAINT "Agent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -640,10 +646,19 @@ ALTER TABLE "CompanyMember" ADD CONSTRAINT "CompanyMember_userId_fkey" FOREIGN K
 ALTER TABLE "CompanyMember" ADD CONSTRAINT "CompanyMember_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "CompanyLogo" ADD CONSTRAINT "CompanyLogo_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Listing" ADD CONSTRAINT "Listing_agentId_fkey" FOREIGN KEY ("agentId") REFERENCES "Agent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Listing" ADD CONSTRAINT "Listing_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ListingHistory" ADD CONSTRAINT "ListingHistory_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ListingHistory" ADD CONSTRAINT "ListingHistory_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Media" ADD CONSTRAINT "Media_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -713,21 +728,6 @@ ALTER TABLE "CompanyInfo" ADD CONSTRAINT "CompanyInfo_companyApplicationId_fkey"
 
 -- AddForeignKey
 ALTER TABLE "CompanyDocument" ADD CONSTRAINT "CompanyDocument_companyApplicationId_fkey" FOREIGN KEY ("companyApplicationId") REFERENCES "CompanyApplication"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ListingApplication" ADD CONSTRAINT "ListingApplication_agentId_fkey" FOREIGN KEY ("agentId") REFERENCES "Agent"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ListingApplication" ADD CONSTRAINT "ListingApplication_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ListingApplication" ADD CONSTRAINT "ListingApplication_listingId_fkey" FOREIGN KEY ("listingId") REFERENCES "Listing"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ListingApplicationHistory" ADD CONSTRAINT "ListingApplicationHistory_listingApplicationId_fkey" FOREIGN KEY ("listingApplicationId") REFERENCES "ListingApplication"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ListingApplicationHistory" ADD CONSTRAINT "ListingApplicationHistory_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Invite" ADD CONSTRAINT "Invite_companyId_fkey" FOREIGN KEY ("companyId") REFERENCES "Company"("id") ON DELETE CASCADE ON UPDATE CASCADE;

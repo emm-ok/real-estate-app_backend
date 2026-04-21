@@ -4,6 +4,16 @@ import cloudinary from "../../config/cloudinary.js";
 // import { listingData } from "../../lib/listingData.js"
 
 export const createListing = async (req, res) => {
+  const agent = await prisma.agent.findUnique({
+    where: { userId: req.user.id },
+  })
+
+  if(!agent){
+    return res.status(404).json({
+      message: "Agent not found"
+    })
+  }
+  
   try {
     const listing = await prisma.listing.create({
       data: {

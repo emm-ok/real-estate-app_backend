@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import {env} from "../../config/env.js"
+import { env } from "../../config/env.js";
 import { updateUserSchema } from "../auth/auth.validation.js";
 
 export const userSelect = {
@@ -29,7 +29,7 @@ export const fetchUser = async (req, res) => {
       where: { id: req.user.id },
       select: userSelect,
     });
-    
+
     if (!user || user.status !== "ACTIVE") {
       return res.status(404).json({
         success: false,
@@ -67,9 +67,8 @@ export const updateUser = async (req, res) => {
 
     const parsed = updateUserSchema.safeParse(req.body);
 
-    
-    if(!parsed.success){
-      return res.status(400).json(parsed.error.format())
+    if (!parsed.success) {
+      return res.status(400).json(parsed.error.format());
     }
     const { name, phone, bio, address, city, state, country } = parsed.data;
 
@@ -98,7 +97,7 @@ export const updateUser = async (req, res) => {
       data: { ...updates, updatedAt: new Date() },
     });
 
-    console.log("User", updateUser)
+    console.log("User", updateUser);
 
     if (updateUser.count === 0) {
       return res.status(400).json({
@@ -117,6 +116,39 @@ export const updateUser = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update user",
+    });
+  }
+};
+
+export const updateUserImage = async (req, res) => {
+  try {
+    if(!req.file){
+      return res.status(404).json({
+        message: "No image file provided",
+      })
+    }
+
+    const user = await prisma.userImage.upsert({
+      where: { id: req.user.id },
+      create: {
+        userId: req.user.id,
+        url: req.file.path,
+        publicId: req.file.filename,
+      },
+      update: {
+        userId: req.user.id,
+        url: req.file.path,
+        publicId: req.file.filename,
+      },
+    });
+    return res.status(200).json({
+      success: true,
+      message: "User Image updated successfully",
+    });
+  } catch (error) {
+    console.error(error.message);
+    return res.status(500).json({
+      message: "Failed to update user image",
     });
   }
 };

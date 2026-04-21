@@ -1,3 +1,5 @@
+import { prisma } from "../lib/prisma.js";
+
 export const requireAdmin = async (req, res, next) => {
   try {
     if (!req.user) {
@@ -62,6 +64,64 @@ export const requireAgent = async (req, res, next) => {
     console.log(error.message);
     return res.status(500).json({
       message: "Failed to verify agent",
+    });
+  }
+};
+
+export const requireCompanyAdmin = async (req, res, next) => {
+  try {
+    const { companyId } = req.params;
+
+    if (!companyId) {
+      return res.status(400).json({
+        message: "Company ID is required",
+      });
+    }
+
+    const companyAdmin = await prisma.companyMember.findFirst({
+      where: {
+        userId: req.user.id,
+        companyId,
+        role: "ADMIN",
+      },
+    });
+    if (!companyAdmin) {
+      return res.status(404).json({
+        message: "Company Admin not found",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.log(error.message);
+    return res.status(500).json({
+      message: "Failed to verify company admin",
+    });
+  }
+};
+
+export const requireCompanyMember = async (req, res, next) => {
+  try{
+    const { companyId } = req.params;
+
+  const member = await prisma.companyMember.findFirst({
+    where: {
+      userId: req.user.id,
+      companyId,
+    },
+  });
+
+  if (!member) {
+    return res.status(404).json({
+      message: "Member not found",
+    });
+  }
+
+  next();
+  } catch (error) {
+    console.log(error.message);
+    return res.status(500).json({
+      message: "Failed to verify company member",
     });
   }
 };
