@@ -36,7 +36,7 @@ router.patch("/doc/:docId", requireAdmin, verifyApplicationDocument);
 router.patch("/:applicationId/approve", requireAdmin, approveAgentApplication);
 router.patch("/:applicationId/reject", requireAdmin, rejectAgentApplication);
 
-router.use(isEmailVerified) // middleware (check email verified)
+// router.use(isEmailVerified) // middleware (check email verified)
 router.post("/", createAgentApplication);
 router.get("/", getMyAgentApplication);
 router.use(validateApplicationUpdate); // middleware (validate user can update application)

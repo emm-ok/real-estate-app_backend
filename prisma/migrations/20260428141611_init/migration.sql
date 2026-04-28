@@ -20,7 +20,7 @@ CREATE TYPE "ApplicationAction" AS ENUM ('CREATED', 'SUBMITTED', 'APPROVED', 'RE
 CREATE TYPE "ListingAction" AS ENUM ('DRAFTED', 'UPDATED', 'SUBMITTED', 'UPLOADED_MEDIA', 'DELETED_MEDIA', 'ARCHIVED');
 
 -- CreateEnum
-CREATE TYPE "ApplicationStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED');
+CREATE TYPE "ApplicationStatus" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED');
 
 -- CreateEnum
 CREATE TYPE "InviteStatus" AS ENUM ('PENDING', 'ACCEPTED', 'EXPIRED', 'REVOKED');
@@ -64,6 +64,7 @@ CREATE TABLE "User" (
     "googleId" TEXT,
     "phone" TEXT,
     "bio" TEXT,
+    "image" TEXT,
     "address" TEXT,
     "city" TEXT,
     "state" TEXT,
@@ -86,19 +87,6 @@ CREATE TABLE "User" (
     "deletedAt" TIMESTAMP(3),
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
-CREATE TABLE "UserImage" (
-    "id" TEXT NOT NULL,
-    "url" TEXT NOT NULL,
-    "publicId" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-    "deletedAt" TIMESTAMP(3),
-
-    CONSTRAINT "UserImage_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -281,7 +269,7 @@ CREATE TABLE "AgentProfessional" (
     "agentApplicationId" TEXT NOT NULL,
     "licenseNumber" TEXT NOT NULL,
     "licenseCountry" TEXT NOT NULL,
-    "specialization" "AgentSpecialization" NOT NULL,
+    "specialization" "AgentSpecialization"[],
     "yearsExperience" INTEGER NOT NULL,
     "companyName" TEXT,
     "website" TEXT,
@@ -419,6 +407,7 @@ CREATE TABLE "CompanyDocument" (
     "url" TEXT NOT NULL,
     "publicId" TEXT NOT NULL,
     "isVerified" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "CompanyDocument_pkey" PRIMARY KEY ("id")
 );
@@ -479,9 +468,6 @@ CREATE INDEX "User_createdAt_idx" ON "User"("createdAt");
 
 -- CreateIndex
 CREATE INDEX "User_deletedAt_idx" ON "User"("deletedAt");
-
--- CreateIndex
-CREATE INDEX "UserImage_userId_idx" ON "UserImage"("userId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Agent_userId_key" ON "Agent"("userId");
@@ -626,9 +612,6 @@ CREATE INDEX "AdminAuditLog_targetCompanyId_idx" ON "AdminAuditLog"("targetCompa
 
 -- CreateIndex
 CREATE INDEX "AdminAuditLog_createdAt_idx" ON "AdminAuditLog"("createdAt");
-
--- AddForeignKey
-ALTER TABLE "UserImage" ADD CONSTRAINT "UserImage_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Agent" ADD CONSTRAINT "Agent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -8,7 +8,10 @@ const storage = new CloudinaryStorage({
     const isImage = file.mimetype.startsWith("image");
     const isVideo = file.mimetype.startsWith("video");
     const isDocument =
-      file.mimetype === "application/pdf" || file.mimetype.includes("word");
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "application/msword" || // .doc
+      file.mimetype ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"; // .docx
 
     // distribute to specific folder
     let folder;
@@ -33,14 +36,21 @@ const storage = new CloudinaryStorage({
       resource_type: isImage || isVideo ? "auto" : "raw",
 
       allowed_formats: [
-        "jpg", "jpeg", "png", "webp",
-        "mp4", "mov", "webm",
-        "pdf", "doc", "docx"
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "mp4",
+        "mov",
+        "webm",
+        "pdf",
+        "doc",
+        "docx",
       ],
 
-      transformation: isImage 
-      ? [{ quality: "auto", fetch_format: "auto" }] 
-      : undefined,
+      transformation: isImage
+        ? [{ quality: "auto", fetch_format: "auto" }]
+        : undefined,
     };
   },
 });
@@ -48,6 +58,6 @@ const storage = new CloudinaryStorage({
 export const upload = multer({
   storage,
   limits: {
-    filesSize: 50 * 1024 * 1024, // 50MB
+    fileSize: 50 * 1024 * 1024, // 50MB
   },
 });

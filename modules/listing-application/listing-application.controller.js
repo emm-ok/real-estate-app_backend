@@ -6,14 +6,14 @@ import cloudinary from "../../config/cloudinary.js";
 export const createListing = async (req, res) => {
   const agent = await prisma.agent.findUnique({
     where: { userId: req.user.id },
-  })
+  });
 
-  if(!agent){
+  if (!agent) {
     return res.status(404).json({
-      message: "Agent not found"
-    })
+      message: "Agent not found",
+    });
   }
-  
+
   try {
     const listing = await prisma.listing.create({
       data: {
@@ -55,13 +55,71 @@ export const createListing = async (req, res) => {
 
 export const getAllListings = async (req, res) => {
   try {
-    const listing = await prisma.listing.findMany({
-      where: { agentId: req.user.id },
-    });
+    let {
+      page = 1,
+      limit = 10,
+      type,
+      bedrooms,
+      bathrooms,
+      search,
+      minPrice,
+      maxPrice,
+      sortBy = "createdAt",
+      order = "desc",
+    } = req.query;
 
-    if (listing.length === 0) {
-      return res.status(404).json({
+    page = parseInt(page);
+    limit = parseInt(limit);
+    const skip = (page - 1) * limit;
+
+    // console.log(req.user.id);
+    const filters = {
+      status: "ACTIVE",
+      ...(type && { type: type.toUpperCase() }),
+      ...(bedrooms && { bedrooms: parseInt(bedrooms) }),
+      ...(bathrooms && { bathrooms: parseInt(bathrooms) }),
+      ...(search && {
+        OR: [
+          { title : { contains: search, mode: "insensitive" }},
+          { city: { contains: search, mode: "insensitive" } },
+          { state: { contains: search, mode: "insensitive" } },
+          { country: { contains: search, mode: "insensitive" } },
+          { address: { contains: search, mode: "insensitive" } },
+        ],
+      }),
+      price: {
+       ...(minPrice && { gte: parseInt(minPrice)} ),
+       ...(maxPrice && { lte: parseInt(maxPrice)} ),
+      }
+    };
+      
+    const [listing, total] = await Promise.all([
+      prisma.listing.findMany({
+        take: limit,
+        skip,
+        where: filters,
+        orderBy: {
+          [sortBy]: order,
+        },
+      }),
+
+      prisma.listing.count({
+        where: filters,
+      }),
+    ]);
+    console.log("Total Listings", total)
+
+    if (!listing.length) {
+      return res.status(200).json({
+        success: true,
         message: "No listings found",
+        listings: [],
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
       });
     }
 
@@ -69,9 +127,15 @@ export const getAllListings = async (req, res) => {
       success: true,
       message: "Listings retrieved successfully",
       listing,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
-    console.error(error.message);
+    console.error("Error", error.message);
     return res.status(500).json({
       message: "Failed to get listing",
     });
@@ -250,7 +314,7 @@ export const deleteListingMedias = async (req, res) => {
       message: "Medias deleted successfully",
     });
   } catch (error) {
-    console.error(error.message);
+    console.error("Error", error.message);
     return res.status(500).json({
       message: "Failed to delete medias",
     });

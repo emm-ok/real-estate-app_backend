@@ -1,6 +1,7 @@
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
 import { updateUserSchema } from "../auth/auth.validation.js";
+import { email } from "zod";
 
 export const userSelect = {
   id: true,
@@ -12,6 +13,8 @@ export const userSelect = {
   companyMembership: true,
   bookmarks: true,
   reviews: true,
+  emailVerified: true,
+  emailVerifiedAt: true,
 };
 export const userUpdateSelect = {
   id: true,

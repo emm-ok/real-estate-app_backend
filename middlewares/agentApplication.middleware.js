@@ -36,6 +36,7 @@ export const validateApplicationUpdate = async (req, res, next) => {
       },
       include: {
         professional: true,
+        documents: true,
       }
     });
 

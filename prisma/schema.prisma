@@ -70,7 +70,6 @@ enum ApplicationStatus {
   PENDING
   APPROVED
   REJECTED
-  ARCHIVED
 }
 
 enum InviteStatus {
@@ -160,7 +159,7 @@ model User {
 
   phone String?
   bio   String?
-  image UserImage[]
+  image String?
 
   address String?
   city    String?
@@ -217,20 +216,20 @@ model User {
   @@index([deletedAt])
 }
 
-model UserImage {
-  id        String           @id @default(uuid())
-  url       String
-  publicId String
-  userId String
+// model UserImage {
+//   id        String           @id @default(uuid())
+//   url       String
+//   publicId String
+//   userId String
 
-  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+//   createdAt DateTime  @default(now())
+//   updatedAt DateTime  @updatedAt
+//   deletedAt DateTime?
 
-  @@index([userId])
-}
+//   @@index([userId])
+// }
 
 // AGENT
 
@@ -517,7 +516,7 @@ model AgentProfessional {
 
   licenseNumber   String
   licenseCountry  String
-  specialization  AgentSpecialization
+  specialization  AgentSpecialization[]
   yearsExperience Int
   companyName     String?
   website         String?
@@ -701,6 +700,7 @@ model CompanyDocument {
   publicId String
 
   isVerified Boolean @default(false)
+  createdAt DateTime @default(now())
 
   @@unique([companyApplicationId, type])
 }

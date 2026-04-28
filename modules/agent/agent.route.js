@@ -16,6 +16,6 @@ router.get("/stats", requireAgent, getAgentStats);
 router.use(requireAdmin);
 router.get("/all-agents", getAllAgents);
 router.get("/:agentId", getAgent);
-router.patch("/:agentId", updateAgentStatus);
+router.patch("/:agentId/status", updateAgentStatus);
 
 export default router;

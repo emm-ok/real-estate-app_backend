@@ -2,13 +2,16 @@ import { prisma } from "../lib/prisma.js";
 
 export const requireAdmin = async (req, res, next) => {
   try {
-    if (!req.user) {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    })
+    if (!user) {
       return res.status(404).json({
         message: "User not found",
       });
     }
 
-    if (req.user.role !== "ADMIN") {
+    if (user.role !== "ADMIN") {
       return res.status(403).json({
         message: "Access denied, Admin only!",
       });
@@ -24,13 +27,16 @@ export const requireAdmin = async (req, res, next) => {
 
 export const requireUser = async (req, res, next) => {
   try {
-    if (!req.user) {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    })
+    if (!user) {
       return res.status(404).json({
         message: "User not found",
       });
     }
 
-    if (req.user.role !== "USER") {
+    if (user.role !== "USER") {
       return res.status(403).json({
         message: "Access denied, User only!",
       });
@@ -47,13 +53,18 @@ export const requireUser = async (req, res, next) => {
 
 export const requireAgent = async (req, res, next) => {
   try {
-    if (!req.user) {
+    const agent = await prisma.agent.findUnique({
+      where: { userId: req.user.id },
+      include: { user: true}
+    })
+
+    if (!agent) {
       return res.status(404).json({
         message: "User not found",
       });
     }
 
-    if (req.user.role !== "AGENT") {
+    if (agent.user.role !== "AGENT") {
       return res.status(403).json({
         message: "Access denied, Agent only!",
       });

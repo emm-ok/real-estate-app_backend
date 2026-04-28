@@ -103,31 +103,48 @@ export const updateAgentApplication = async (req, res) => {
     }
 
     const schema = stepSchemas[step];
-    if (!schema) {
-      return res.status(400).json({ message: "Invalid step" });
+    if (schema) {
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        console.log(parsed.error.format());
+        return res.status(400).json({
+          message: parsed.error.format(),
+        });
+      }
+      var data = parsed.data;
     }
-
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        message: parsed.error.format(),
-      });
-    }
-
-    const data = parsed.data;
+    console.log("STEP:", step);
+    console.log("BODY:", req.body);
+    console.log("DATA:", data);
 
     let updateData = {};
 
-    if (step === 1) {
+    if (step === 3) {
+      if (!data?.professional) {
+        return res.status(400).json({
+          message: "Professional data is required",
+        });
+      }
+
+      const specialization = Array.isArray(data.professional.specialization)
+        ? data.professional.specialization
+        : [data.professional.specialization];
+
       updateData.professional = {
         upsert: {
-          create: data.professional,
-          update: data.professional,
+          create: {
+            ...data.professional,
+            specialization,
+          },
+          update: {
+            ...data.professional,
+            specialization,
+          },
         },
       };
     }
 
-    if (step === 2) {
+    if (step === 4) {
       const documents = await prisma.agentDocument.findMany({
         where: { agentApplicationId: application.id },
       });
@@ -141,6 +158,7 @@ export const updateAgentApplication = async (req, res) => {
       );
 
       if (missingDocs.length > 0) {
+        console.log(missingDocs.join(", "));
         return res.status(400).json({
           message: "Missing required documents",
           missingDocs,
@@ -192,6 +210,7 @@ export const uploadAgentDocument = async (req, res) => {
       });
     }
 
+    console.log("Backend req file", req.file);
     const document = await prisma.agentDocument.upsert({
       where: {
         agentApplicationId_type: {
@@ -248,6 +267,7 @@ export const deleteAgentDocument = async (req, res) => {
         },
       },
     });
+    console.log("Existing Docuemnt", existing)
 
     if (!existing) {
       return res.status(404).json({
@@ -255,11 +275,13 @@ export const deleteAgentDocument = async (req, res) => {
       });
     }
 
-    const result = await cloudinary.uploader.destroy(existing.publicId, {
+    const { result } = await cloudinary.uploader.destroy(existing.publicId, {
       resource_type: "raw",
     });
 
-    if (result !== "ok" || result !== "not found") {
+    console.log(result)
+
+    if (result !== "ok" && result !== "not found") {
       throw new Error("Cloudinary deletion failed");
     }
 
@@ -285,6 +307,7 @@ export const deleteAgentDocument = async (req, res) => {
       message: `${type} deleted succesfully`,
     });
   } catch (error) {
+    console.error(error.message)
     return res.status(500).json({
       success: false,
       message: `Failed to delete document`,

@@ -15,7 +15,7 @@ router.use(validateAuth, validateUser);
 router.get("/all-companies", getAllCompanies); // get all companies in database
 router.get("/", getMyCompanies); // get user companies
 router.get("/:companyId", getCompanyById); // get 1 company by ID
-router.patch("/:companyId/status", requireCompanyAdmin, updateCompany);
+router.patch("/:companyId", requireCompanyAdmin, updateCompany);
 router.get("/:companyId/agents", getCompanyAgents);
 router.post(
   "/:companyId",
