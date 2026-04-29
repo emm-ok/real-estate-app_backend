@@ -107,22 +107,25 @@ export const updateCompanyApplication = async (req, res) => {
     }
 
     const schema = companyStepSchemas[step];
-    if (!schema) {
-      return res.status(400).json({ message: "Invalid step" });
+    if (schema) {
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        console.log(parsed.error.format());
+        return res.status(400).json({
+          message: parsed.error.format(),
+        });
+      }
+      var data = parsed.data;
     }
-
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({
-        message: parsed.error.format(),
-      });
-    }
-
-    const data = parsed.data;
 
     let updateData = {};
 
-    if (step === 1) {
+    if (step === 3) {
+      if (!data?.companyInfo) {
+        return res.status(400).json({
+          message: "Company data is required",
+        });
+      }
       updateData.companyInfo = {
         upsert: {
           create: data.companyInfo,
@@ -131,7 +134,7 @@ export const updateCompanyApplication = async (req, res) => {
       };
     }
 
-    if (step === 2) {
+    if (step === 4) {
       const isComplete = await checkUploadComplete(application, res);
       if (!isComplete) {
         return res.status(400).json({
@@ -177,7 +180,7 @@ export const uploadCompanyDocument = async (req, res) => {
   try {
     const { application } = req;
     const { type } = req.params;
-
+    console.log("Request", req.file)
     if (!req.file) {
       return res.status(400).json({
         message: "No file uploaded",
@@ -323,7 +326,6 @@ export const submitCompanyApplication = async (req, res) => {
   try {
     const { application } = req;
 
-    console.log("Application Point", application);
     // const user = await prisma.user.findUnique({
     //   where: { id: application.userId },
     // });
